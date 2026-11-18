@@ -50,6 +50,8 @@ Where codegraph failed or wasted tokens when used on its own repo:
 
 ## Next step
 
+`FUTURE_PLAN.md` (phases 2–10 + owner inputs) is committed at repo root.
+
 Phase 2: MCP server over stdio with `find_symbol`, `outline`, `callers`/`callees` (syntactic, `inferred` confidence), `get_context(symbol, budget_tokens)`. Wire it into the agent's MCP config and capture a transcript of `find_symbol`/`get_context` on this repo. Budget enforcement via a token counter test; p95 latency target <100ms on a 100k-LOC index.
 
 ## Open questions for the owner
