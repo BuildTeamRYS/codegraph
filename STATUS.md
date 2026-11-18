@@ -55,6 +55,11 @@ the `codegraph_*` tools are live in the OpenCode session that built this phase.
 | 9 | Semantic search and summaries | not started |
 | 10 | Evaluation | not started |
 
+## Housekeeping
+
+- LICENSE: PolyForm Shield 1.0.0 (source-available, non-competing). Copyright holder currently "ravijaanthony" — owner must confirm full legal name/company before release.
+- README.md: minimal dev-facing; OpenCode MCP config marked verified, Claude Code marked untested.
+
 ## Dogfooding notes (from phase 3 onward)
 
 Where codegraph failed or wasted tokens when used on its own repo:
