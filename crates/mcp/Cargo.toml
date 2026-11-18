@@ -1,0 +1,17 @@
+[package]
+name = "codegraph-mcp"
+description = "MCP server (stdio) exposing codegraph queries to coding agents"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+codegraph-core.workspace = true
+codegraph-query.workspace = true
+codegraph-store.workspace = true
+rmcp = { version = "3.11", features = ["transport-io"] }
+tokio = { version = "1", features = ["full"] }
+schemars = { version = "1", features = ["derive"] }
+anyhow.workspace = true
+serde.workspace = true
+thiserror.workspace = true

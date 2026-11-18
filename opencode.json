@@ -1,0 +1,14 @@
+{
+  "mcp": {
+    "servers": {
+      "codegraph": {
+        "type": "local",
+        "command": [
+          "/home/ravijaanthony/Documents/dev/RSVP/target/release/codegraph",
+          "serve",
+          "."
+        ]
+      }
+    }
+  }
+}

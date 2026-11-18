@@ -1,11 +1,17 @@
 [
   {
+    "imported_name": "Cart",
+    "kind": "named",
     "line": 1,
+    "local_name": "Cart",
     "path": "src/App.tsx",
     "source": "./cart"
   },
   {
+    "imported_name": "Product",
+    "kind": "named",
     "line": 1,
+    "local_name": "Product",
     "path": "src/cart.ts",
     "source": "./product"
   }

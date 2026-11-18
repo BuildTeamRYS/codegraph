@@ -1,6 +1,9 @@
 [
   {
+    "imported_name": "parseArgs",
+    "kind": "named",
     "line": 1,
+    "local_name": "parseArgs",
     "path": "src/main.ts",
     "source": "./args"
   }

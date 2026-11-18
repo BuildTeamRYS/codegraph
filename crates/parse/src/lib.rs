@@ -4,19 +4,23 @@
 //! - Only `.ts`, `.tsx`, `.mts`, `.cts` files are parsed for now.
 //! - Symbol kinds: function declarations (incl. generators), methods,
 //!   classes, interfaces, type aliases, enums, and `const x = () => ...`
-//!   / `const x = function ...` bindings exported or not.
+//!   / `const x = function ...` bindings exported or not. Nested named
+//!   symbols are extracted too.
 //! - Docstrings: the `/** ... */` block immediately preceding the statement
 //!   (or its `export` wrapper) is attached, stripped of comment punctuation.
 //! - Symbol content_hash covers the doc comment AND the declaration text, so
 //!   editing only a docstring still invalidates derived facts.
-//! - Imports: static `import ... from 'x'` and `export ... from 'x'` sources.
+//! - Imports: one record per binding (named/default/namespace/side-effect)
+//!   plus re-exports. Used by the resolve pass, not stored as edges.
+//! - Call sites (`x()`, `obj.x()`, `new X()`) are recorded raw; the resolve
+//!   pass at index time turns them into `edges(kind='calls')`.
 //! - Files whose tree contains ERROR nodes are still indexed best-effort but
 //!   recorded as indexing gaps by the caller (never silently complete).
 
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
-use codegraph_core::{hash_bytes, ImportRecord, SymbolKind, SymbolRecord};
+use codegraph_core::{hash_bytes, CallSite, ImportRecord, SymbolKind, SymbolRecord};
 use ignore::WalkBuilder;
 use thiserror::Error;
 use tree_sitter::{Node, Parser};
@@ -42,6 +46,7 @@ pub struct ParsedFile {
     pub is_vendor: bool,
     pub symbols: Vec<SymbolRecord>,
     pub imports: Vec<ImportRecord>,
+    pub calls: Vec<CallSite>,
     /// True if the tree-sitter tree contained ERROR nodes.
     pub had_errors: bool,
 }
@@ -192,6 +197,7 @@ pub fn parse_bytes(rel_path: &str, bytes: &[u8]) -> Result<ParsedFile, ParseErro
         src: src.as_bytes(),
         symbols: Vec::new(),
         imports: Vec::new(),
+        calls: Vec::new(),
     };
     ex.visit(tree.root_node(), &mut Vec::new(), None);
 
@@ -204,6 +210,7 @@ pub fn parse_bytes(rel_path: &str, bytes: &[u8]) -> Result<ParsedFile, ParseErro
         is_vendor,
         symbols: ex.symbols,
         imports: ex.imports,
+        calls: ex.calls,
         had_errors,
     })
 }
@@ -308,6 +315,7 @@ struct Extractor<'s> {
     src: &'s [u8],
     symbols: Vec<SymbolRecord>,
     imports: Vec<ImportRecord>,
+    calls: Vec<CallSite>,
 }
 
 impl<'s> Extractor<'s> {
@@ -318,30 +326,39 @@ impl<'s> Extractor<'s> {
         let kind = node.kind();
 
         match kind {
-            "import_statement" | "export_statement" => {
+            "import_statement" => {
+                self.collect_import_bindings(&node);
+                return; // no symbols inside an import
+            }
+            "export_statement" => {
                 if let Some(src_node) = node.child_by_field_name("source") {
-                    // `import ... from 'x'` and `export ... from 'x'` both carry a source.
+                    // `export ... from 'x'`: re-export, no local binding created.
                     self.imports.push(ImportRecord {
                         path: self.path.to_string(),
-                        source: node_text(&src_node, src)
-                            .trim_matches(|c| c == '\'' || c == '"')
-                            .to_string(),
+                        source: unquote(node_text(&src_node, src)),
+                        kind: "reexport".to_string(),
+                        local_name: None,
+                        imported_name: None,
                         line: node.start_position().row as u32 + 1,
                     });
+                    return;
                 }
                 let doc = docstring_for(&node, src);
-                let mut cursor = node.walk();
-                for child in node.named_children(&mut cursor) {
-                    if child.kind() == "decorator" {
-                        continue;
-                    }
-                    self.visit(child, scope, doc.clone());
-                }
+                self.walk_children_skipping_decorators(&node, scope, doc);
                 return;
+            }
+            "call_expression" => {
+                if let Some(f) = node.child_by_field_name("function") {
+                    self.record_callee(&f, false, node.start_position().row as u32 + 1);
+                }
+            }
+            "new_expression" => {
+                if let Some(f) = node.child_by_field_name("constructor") {
+                    self.record_callee(&f, true, node.start_position().row as u32 + 1);
+                }
             }
             "function_declaration" | "generator_function_declaration" => {
                 self.emit_function(&node, scope, doc);
-                return; // bodies contain no named symbols in TS
             }
             "method_definition" => {
                 let name_node = node.child_by_field_name("name");
@@ -359,7 +376,6 @@ impl<'s> Extractor<'s> {
                         doc,
                     );
                 }
-                return;
             }
             "class_declaration"
             | "abstract_class_declaration"
@@ -386,14 +402,17 @@ impl<'s> Extractor<'s> {
                 let doc = self.take_doc(&node, doc);
                 self.emit(&node, &node, kind, &name, scope, signature, doc);
                 scope.push(name);
-                // Visit members to pick up methods (pushed into the class scope).
+                // Visit members to pick up methods (scoped under this class).
                 let mut cursor = node.walk();
                 for child in node.named_children(&mut cursor) {
                     if child.kind() == "class_body"
                         || child.kind() == "interface_body"
                         || child.kind() == "enum_body"
                     {
-                        for member in child.named_children(&mut child.walk()) {
+                        let child_cursor_target = child;
+                        for member in
+                            child_cursor_target.named_children(&mut child_cursor_target.walk())
+                        {
                             self.visit(member, scope, None);
                         }
                     }
@@ -415,7 +434,6 @@ impl<'s> Extractor<'s> {
                         doc,
                     );
                 }
-                return;
             }
             _ => {}
         }
@@ -423,6 +441,138 @@ impl<'s> Extractor<'s> {
         let mut cursor = node.walk();
         for child in node.named_children(&mut cursor) {
             self.visit(child, scope, None);
+        }
+    }
+
+    fn walk_children_skipping_decorators(
+        &mut self,
+        node: &Node,
+        scope: &mut Vec<String>,
+        doc: Option<String>,
+    ) {
+        let mut cursor = node.walk();
+        for child in node.named_children(&mut cursor) {
+            if child.kind() == "decorator" {
+                continue;
+            }
+            self.visit(child, scope, doc.clone());
+        }
+    }
+
+    /// Record the callee of a call/construct expression. Only a plain
+    /// identifier or a member expression yields a name; anything else
+    /// (calls of expressions, etc.) is skipped — recorded as nothing,
+    /// which is the honest answer.
+    fn record_callee(&mut self, f: &Node, is_construct: bool, line: u32) {
+        match f.kind() {
+            "identifier" => self.calls.push(CallSite {
+                path: self.path.to_string(),
+                callee_name: node_text(f, self.src).to_string(),
+                qualifier: None,
+                is_construct,
+                line,
+            }),
+            "member_expression" => {
+                let object = f.child_by_field_name("object");
+                let property = f.child_by_field_name("property");
+                if let Some(property) = property {
+                    self.calls.push(CallSite {
+                        path: self.path.to_string(),
+                        callee_name: node_text(&property, self.src).to_string(),
+                        qualifier: object.map(|o| node_text(&o, self.src).to_string()),
+                        is_construct,
+                        line,
+                    });
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// One binding record per imported name.
+    fn collect_import_bindings(&mut self, node: &Node) {
+        let src = self.src;
+        let path = self.path.to_string();
+        let line = node.start_position().row as u32 + 1;
+        let Some(src_node) = node.child_by_field_name("source") else {
+            return;
+        };
+        let source = unquote(node_text(&src_node, src));
+        let mut cursor = node.walk();
+        let mut saw_binding = false;
+        for child in node.named_children(&mut cursor) {
+            if child.kind() != "import_clause" {
+                continue;
+            }
+            let mut clause_cursor = child.walk();
+            for clause in child.named_children(&mut clause_cursor) {
+                match clause.kind() {
+                    "identifier" => {
+                        // `import def from 'x'` — default import.
+                        saw_binding = true;
+                        self.imports.push(ImportRecord {
+                            path: path.clone(),
+                            source: source.clone(),
+                            kind: "default".to_string(),
+                            local_name: Some(node_text(&clause, src).to_string()),
+                            imported_name: None,
+                            line,
+                        });
+                    }
+                    "namespace_import" => {
+                        saw_binding = true;
+                        // `import * as ns from 'x'` — first identifier child.
+                        let mut ns_cursor = clause.walk();
+                        let local = clause
+                            .named_children(&mut ns_cursor)
+                            .find(|c| c.kind() == "identifier")
+                            .map(|n| node_text(&n, src).to_string());
+                        self.imports.push(ImportRecord {
+                            path: path.clone(),
+                            source: source.clone(),
+                            kind: "namespace".to_string(),
+                            local_name: local,
+                            imported_name: None,
+                            line,
+                        });
+                    }
+                    "named_imports" => {
+                        let mut named_cursor = clause.walk();
+                        for spec in clause.named_children(&mut named_cursor) {
+                            if spec.kind() != "import_specifier" {
+                                continue;
+                            }
+                            let imported = spec
+                                .child_by_field_name("name")
+                                .map(|n| node_text(&n, src).to_string());
+                            let alias = spec
+                                .child_by_field_name("alias")
+                                .map(|n| node_text(&n, src).to_string());
+                            saw_binding = true;
+                            self.imports.push(ImportRecord {
+                                path: path.clone(),
+                                source: source.clone(),
+                                kind: "named".to_string(),
+                                local_name: alias.clone().or_else(|| imported.clone()),
+                                imported_name: imported,
+                                line,
+                            });
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+        if !saw_binding {
+            // `import 'side-effect'` — no bindings, but the specifier matters.
+            self.imports.push(ImportRecord {
+                path,
+                source,
+                kind: "side_effect".to_string(),
+                local_name: None,
+                imported_name: None,
+                line,
+            });
         }
     }
 
@@ -483,6 +633,11 @@ impl<'s> Extractor<'s> {
             content_hash: hash_bytes(&hasher_input),
         });
     }
+}
+
+fn unquote(s: &str) -> String {
+    s.trim_matches(|c| c == '\'' || c == '"' || c == '`')
+        .to_string()
 }
 
 /// Extract the `x` from `const x = () => ...` / `const x = function () {...}`.

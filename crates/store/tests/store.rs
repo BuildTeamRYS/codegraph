@@ -52,6 +52,7 @@ fn replace_file_roundtrip_and_delete() {
             false,
             &symbols,
             &[],
+            &[],
         )
         .unwrap();
     assert_eq!(written, 2);
@@ -69,6 +70,7 @@ fn replace_file_roundtrip_and_delete() {
             false,
             false,
             &symbols[..1],
+            &[],
             &[],
         )
         .unwrap();

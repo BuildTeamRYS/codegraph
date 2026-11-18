@@ -2,32 +2,15 @@
 
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 use anyhow::{Context, Result};
+pub use codegraph_core::git_head_commit;
 use codegraph_parse::{scan, FileOutcome};
 use codegraph_store::{IndexStats, Store};
 
 /// Default index location: `<repo>/.codegraph/index.db` (gitignored).
 pub fn default_db_path(repo: &Path) -> PathBuf {
     repo.join(".codegraph").join("index.db")
-}
-
-pub fn git_head_commit(repo: &Path) -> Option<String> {
-    let out = Command::new("git")
-        .args(["rev-parse", "HEAD"])
-        .current_dir(repo)
-        .output()
-        .ok()?;
-    if !out.status.success() {
-        return None;
-    }
-    let s = String::from_utf8(out.stdout).ok()?.trim().to_string();
-    if s.is_empty() {
-        None
-    } else {
-        Some(s)
-    }
 }
 
 fn now_rfc3339() -> String {
@@ -62,6 +45,7 @@ pub fn index_repo(store: &Store, root: &Path) -> Result<IndexStats> {
                     p.is_vendor,
                     &p.symbols,
                     &p.imports,
+                    &p.calls,
                 )?;
                 stats.symbols_written += written;
                 if p.had_errors {
@@ -80,6 +64,12 @@ pub fn index_repo(store: &Store, root: &Path) -> Result<IndexStats> {
             }
         }
     }
+
+    // Rebuild calls edges from scratch (cheap at this scale; phase 3 makes it incremental).
+    let resolve = store.resolve_calls()?;
+    stats.calls_resolved = resolve.resolved;
+    stats.calls_unresolved = resolve.unresolved;
+    stats.calls_unattributed = resolve.unattributed;
 
     let seen: HashSet<String> = scan.seen_paths;
     stats.files_removed = store.remove_files_not_in(&seen)?;

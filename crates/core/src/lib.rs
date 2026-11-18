@@ -6,7 +6,7 @@
 use serde::{Deserialize, Serialize};
 
 /// Schema version written into `meta.schema_version`. Bump on any migration.
-pub const SCHEMA_VERSION: u32 = 1;
+pub const SCHEMA_VERSION: u32 = 2;
 
 /// Content hash used everywhere in the index (files, symbols, valid_hash).
 /// blake3 hex, full 64 chars.
@@ -87,10 +87,34 @@ pub struct SymbolRecord {
     pub content_hash: ContentHash,
 }
 
+/// A single import binding. One row per binding, not per statement:
+/// `import def, { a, b as c } from 'm'` produces three records.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ImportRecord {
+    /// Repo-relative path of the importing file.
     pub path: String,
+    /// Module specifier as written, e.g. `./crypto`.
     pub source: String,
+    /// `named | default | namespace | side_effect | reexport`
+    pub kind: String,
+    /// Local binding name; None for side-effect imports and re-exports.
+    pub local_name: Option<String>,
+    /// Imported (exported-from-source) name for named bindings; None otherwise.
+    pub imported_name: Option<String>,
+    pub line: u32,
+}
+
+/// A raw call/construct site, before cross-file resolution. Resolved into
+/// `edges` by the resolve pass at index time (phase 2).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CallSite {
+    pub path: String,
+    /// Callee name as written (identifier text).
+    pub callee_name: String,
+    /// Object text for member calls (`crypto`, `this`, `this.items`); None for plain calls.
+    pub qualifier: Option<String>,
+    /// True for `new X(...)`, false for `x(...)`.
+    pub is_construct: bool,
     pub line: u32,
 }
 
@@ -106,3 +130,21 @@ pub const EDGE_KINDS: &[&str] = &[
     "handles_route",
     "depends_on",
 ];
+
+/// HEAD commit of the git repo at `repo`, or None if unavailable/not a repo.
+pub fn git_head_commit(repo: &std::path::Path) -> Option<String> {
+    let out = std::process::Command::new("git")
+        .args(["rev-parse", "HEAD"])
+        .current_dir(repo)
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let s = String::from_utf8(out.stdout).ok()?.trim().to_string();
+    if s.is_empty() {
+        None
+    } else {
+        Some(s)
+    }
+}

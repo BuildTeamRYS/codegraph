@@ -4,6 +4,8 @@ members = [
     "crates/core",
     "crates/parse",
     "crates/store",
+    "crates/query",
+    "crates/mcp",
     "crates/cli",
 ]
 
@@ -16,6 +18,8 @@ license = "MIT"
 codegraph-core = { path = "crates/core" }
 codegraph-parse = { path = "crates/parse" }
 codegraph-store = { path = "crates/store" }
+codegraph-query = { path = "crates/query" }
+codegraph-mcp = { path = "crates/mcp" }
 anyhow = "1"
 thiserror = "2"
 serde = { version = "1", features = ["derive"] }

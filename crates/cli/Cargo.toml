@@ -15,6 +15,9 @@ path = "src/main.rs"
 
 [dev-dependencies]
 serde_json.workspace = true
+rmcp = { version = "3.11", features = ["transport-io", "client", "transport-child-process"] }
+tokio = { version = "1", features = ["full"] }
+futures-util = "0.3"
 tempfile = "3"
 serde.workspace = true
 
@@ -24,6 +27,9 @@ tree-sitter-typescript = "0.23"
 codegraph-core.workspace = true
 codegraph-parse.workspace = true
 codegraph-store.workspace = true
+codegraph-query.workspace = true
+codegraph-mcp.workspace = true
+tokio = { version = "1", features = ["full"] }
 anyhow.workspace = true
 blake3.workspace = true
 clap = { version = "4", features = ["derive"] }

@@ -36,3 +36,17 @@ Format: `YYYY-MM-DD | area | decision | reason`
 - 2026-11-18 | walk | vendor dirs (node_modules/vendor/third_party/dist/build/out) are flagged `is_vendor`, still indexed | PLAN says flag, not skip
 - 2026-11-18 | tests | `expected.symbols.json` excludes `content_hash` | Hashes can't be hand-verified; covered by dedicated hash tests instead
 - 2026-11-18 | timestamps | meta timestamps are unix seconds; no chrono dependency yet | Phase 0 needs opaque freshness markers only
+- 2026-11-18 | mcp | Stdio MCP is the universal transport; one binary serves Claude Code/Desktop, Cursor, Windsurf, Zed, Continue and OpenCode — no per-client code | Avoids N client integrations; MCP config is per-client by design
+- 2026-11-18 | mcp | rmcp 3.11 SDK (owner choice); hand-rolled JSON-RPC fallback not needed | SDK works, has server+client; protocol kept to tools only
+- 2026-11-18 | mcp | MCP tools return dense text (not JSON), errors as helpful zero-match text inside the tool result | Agents read text best; protocol stays simple
+- 2026-11-18 | query | Token budget estimate = ceil(bytes/4), greedy fill from ranked lines, overflow prints "N more available, narrow by X" | Boring, adequate, testable; real tokenizer added only if agents complain
+- 2026-11-18 | query | Budget default 800 (owner) | PLAN default, owner confirmed
+- 2026-11-18 | store | edges carry a `line` column (v2 migration) | Agents need the call-site location, not just the callee's range
+- 2026-11-18 | parse | One import record per binding (named/default/namespace/side-effect/reexport) with local_name→imported_name map | Required to resolve named-import calls across modules
+- 2026-11-18 | resolve | Call graph is syntactic, full re-resolution after every index pass; incremental edge recompute deferred to phase 3 | Correctness first; 100k-LOC full resolve is already <1s
+- 2026-11-18 | resolve | Resolution order: `this.x` enclosing class → namespace/named import into resolved module → unique same-file → globally unique name; everything else `unresolved` | Conservative wins; never guess (dynamic dispatch stays unlabeled)
+- 2026-11-18 | resolve | Member calls through local variables (`cart.add`) and nested member exprs (`this.items.get`) stay unresolved until phase 4 SCIP | No type tracking; guessing would violate "never invent facts"
+- 2026-11-18 | resolve | Calls at module top level are counted (calls_unattributed) but create no edge | edges.src is NOT NULL; no module-level symbol exists to anchor
+- 2026-11-18 | resolve | Re-exports (`export ... from`) recorded as imports kind=reexport, never used for resolution | Re-export graphs resolve transitively at phase 4 with SCIP
+- 2026-11-18 | bench | p95 measured in-process on the synthetic 100k-LOC index: find_symbol 0.59ms, outline 0.13ms, get_context 0.11ms, callees 0.10ms | Far under the 100ms target; subprocess e2e overhead excluded as unrepresentative
+- 2026-11-18 | config | opencode.json (project) registers the release binary as `codegraph` project-locally with `serve .` | Project-local keeps machine-specific paths out of global config; release path noted, rebuild on schema/query changes

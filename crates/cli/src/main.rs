@@ -27,6 +27,13 @@ enum Command {
         #[arg(long)]
         db: Option<PathBuf>,
     },
+    /// Serve the index to coding agents over MCP stdio (all major MCP clients).
+    Serve {
+        #[arg(default_value = ".")]
+        path: PathBuf,
+        #[arg(long)]
+        db: Option<PathBuf>,
+    },
     /// Print store status: schema version, freshness, counts, gaps.
     Status {
         #[arg(default_value = ".")]
@@ -53,6 +60,11 @@ fn main() -> Result<()> {
                 stats.gaps
             );
             println!("store: {}", db.display());
+        }
+        Command::Serve { path, db } => {
+            let db = db.unwrap_or_else(|| default_db_path(&path));
+            let rt = tokio::runtime::Runtime::new()?;
+            rt.block_on(codegraph_mcp::run_stdio(path, db))?;
         }
         Command::Status { path, db } => {
             let db = db.unwrap_or_else(|| default_db_path(&path));
