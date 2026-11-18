@@ -1,0 +1,52 @@
+[
+  {
+    "docstring": null,
+    "end_line": 4,
+    "kind": "interface",
+    "name": "CliArgs",
+    "path": "src/args.ts",
+    "qualified_name": "CliArgs",
+    "signature": "interface CliArgs",
+    "start_line": 1
+  },
+  {
+    "docstring": "Parse process argv into structured args.",
+    "end_line": 9,
+    "kind": "function",
+    "name": "parseArgs",
+    "path": "src/args.ts",
+    "qualified_name": "parseArgs",
+    "signature": "(argv) -> CliArgs",
+    "start_line": 7
+  },
+  {
+    "docstring": null,
+    "end_line": 4,
+    "kind": "enum",
+    "name": "LogLevel",
+    "path": "src/level.ts",
+    "qualified_name": "LogLevel",
+    "signature": "enum LogLevel",
+    "start_line": 1
+  },
+  {
+    "docstring": "Entry point.",
+    "end_line": 10,
+    "kind": "function",
+    "name": "main",
+    "path": "src/main.ts",
+    "qualified_name": "main",
+    "signature": "(argv) -> number",
+    "start_line": 6
+  },
+  {
+    "docstring": null,
+    "end_line": 14,
+    "kind": "function",
+    "name": "run",
+    "path": "src/main.ts",
+    "qualified_name": "run",
+    "signature": "() -> Promise<void>",
+    "start_line": 12
+  }
+]

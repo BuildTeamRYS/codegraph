@@ -1,0 +1,62 @@
+[
+  {
+    "docstring": "Render the cart summary page.",
+    "end_line": 8,
+    "kind": "function",
+    "name": "App",
+    "path": "src/App.tsx",
+    "qualified_name": "App",
+    "signature": "() -> JSX.Element",
+    "start_line": 4
+  },
+  {
+    "docstring": "A shopping cart with quantity tracking.",
+    "end_line": 20,
+    "kind": "class",
+    "name": "Cart",
+    "path": "src/cart.ts",
+    "qualified_name": "Cart",
+    "signature": "class Cart",
+    "start_line": 4
+  },
+  {
+    "docstring": "Add one unit of `p` to the cart.",
+    "end_line": 10,
+    "kind": "method",
+    "name": "add",
+    "path": "src/cart.ts",
+    "qualified_name": "Cart.add",
+    "signature": "(p) -> void",
+    "start_line": 8
+  },
+  {
+    "docstring": "Total price across everything in the cart.",
+    "end_line": 19,
+    "kind": "method",
+    "name": "total",
+    "path": "src/cart.ts",
+    "qualified_name": "Cart.total",
+    "signature": "(products) -> number",
+    "start_line": 13
+  },
+  {
+    "docstring": null,
+    "end_line": 24,
+    "kind": "function",
+    "name": "cartCapacity",
+    "path": "src/cart.ts",
+    "qualified_name": "cartCapacity",
+    "signature": "() -> number",
+    "start_line": 22
+  },
+  {
+    "docstring": null,
+    "end_line": 5,
+    "kind": "interface",
+    "name": "Product",
+    "path": "src/product.ts",
+    "qualified_name": "Product",
+    "signature": "interface Product",
+    "start_line": 1
+  }
+]

@@ -1,0 +1,17 @@
+[
+  {
+    "line": 1,
+    "path": "src/index.ts",
+    "source": "./login"
+  },
+  {
+    "line": 2,
+    "path": "src/index.ts",
+    "source": "./crypto"
+  },
+  {
+    "line": 1,
+    "path": "src/login.ts",
+    "source": "./crypto"
+  }
+]

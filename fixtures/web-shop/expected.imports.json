@@ -1,0 +1,12 @@
+[
+  {
+    "line": 1,
+    "path": "src/App.tsx",
+    "source": "./cart"
+  },
+  {
+    "line": 1,
+    "path": "src/cart.ts",
+    "source": "./product"
+  }
+]

@@ -1,0 +1,82 @@
+[
+  {
+    "docstring": "Hash a plaintext password with the current scheme.",
+    "end_line": 4,
+    "kind": "function",
+    "name": "hash_pw",
+    "path": "src/crypto.ts",
+    "qualified_name": "hash_pw",
+    "signature": "(pw) -> string",
+    "start_line": 2
+  },
+  {
+    "docstring": "Constant-time check of a password against its hash.",
+    "end_line": 9,
+    "kind": "function",
+    "name": "verify_pw",
+    "path": "src/crypto.ts",
+    "qualified_name": "verify_pw",
+    "signature": "(pw, hash) -> boolean",
+    "start_line": 7
+  },
+  {
+    "docstring": null,
+    "end_line": 13,
+    "kind": "function",
+    "name": "clampSalt",
+    "path": "src/crypto.ts",
+    "qualified_name": "clampSalt",
+    "signature": "(s) -> string",
+    "start_line": 11
+  },
+  {
+    "docstring": null,
+    "end_line": 6,
+    "kind": "interface",
+    "name": "Session",
+    "path": "src/login.ts",
+    "qualified_name": "Session",
+    "signature": "interface Session",
+    "start_line": 3
+  },
+  {
+    "docstring": "Authenticate a user and open a session.",
+    "end_line": 12,
+    "kind": "function",
+    "name": "login",
+    "path": "src/login.ts",
+    "qualified_name": "login",
+    "signature": "(user, pw) -> Session",
+    "start_line": 9
+  },
+  {
+    "docstring": "Invalidate an open session.",
+    "end_line": 17,
+    "kind": "function",
+    "name": "logout",
+    "path": "src/login.ts",
+    "qualified_name": "logout",
+    "signature": "(session) -> void",
+    "start_line": 15
+  },
+  {
+    "docstring": null,
+    "end_line": 1,
+    "kind": "type_alias",
+    "name": "UserId",
+    "path": "src/types.ts",
+    "qualified_name": "UserId",
+    "signature": "type UserId",
+    "start_line": 1
+  },
+  {
+    "docstring": null,
+    "end_line": 6,
+    "kind": "enum",
+    "name": "Role",
+    "path": "src/types.ts",
+    "qualified_name": "Role",
+    "signature": "enum Role",
+    "start_line": 3
+  }
+]

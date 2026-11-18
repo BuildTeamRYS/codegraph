@@ -1,0 +1,19 @@
+[package]
+name = "codegraph-parse"
+description = "Tree-sitter extraction for codegraph"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+codegraph-core.workspace = true
+blake3.workspace = true
+ignore = "0.4"
+tree-sitter = "0.25"
+tree-sitter-typescript = "0.23"
+thiserror.workspace = true
+
+[dev-dependencies]
+tempfile = "3"
+serde_json.workspace = true
+serde.workspace = true
