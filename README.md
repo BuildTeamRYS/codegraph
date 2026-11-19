@@ -9,30 +9,78 @@ Not a human UI. Not cloud. Not a replacement for reading code.
 
 ## Status
 
-Early. Phases 0–2 done: TypeScript parse/store, MCP server, syntactic TS call
-graph. See [PLAN.md](PLAN.md), [FUTURE_PLAN.md](FUTURE_PLAN.md), [STATUS.md](STATUS.md).
+Early. Phases 0–2 done: TypeScript/JavaScript parse/store, MCP server,
+syntactic call graph; Phase 0.5 (one-line install, `codegraph update`,
+release CI) implemented, awaiting a GitHub remote for end-to-end proof.
+See [PLAN.md](PLAN.md), [FUTURE_PLAN.md](FUTURE_PLAN.md), [STATUS.md](STATUS.md).
 Marked done only when its acceptance checks pass (`cargo test --workspace`).
 
 ## Quick start
 
+### Install (one line, no toolchain required)
+
+macOS / Linux:
+
 ```sh
-cargo build --release
+curl -fsSL https://github.com/ravijaanthony/codegraph/releases/latest/download/install.sh | sh
+```
 
-# index a TypeScript repo
+Windows (PowerShell):
+
+```powershell
+irm https://github.com/ravijaanthony/codegraph/releases/latest/download/install.ps1 | iex
+```
+
+The installer downloads the right prebuilt binary for your OS/CPU, verifies
+its SHA-256, installs to `~/.codegraph/bin` (macOS/Linux) or
+`%LOCALAPPDATA%\codegraph\bin` (Windows), and offers to add it to your PATH.
+No admin rights, no Node/Python/Rust required — the binary is
+self-contained. Uninstall with `install.sh --uninstall` (same script) or
+`install.ps1 -Uninstall`; remove `~/.codegraph` and its PATH entry by hand.
+
+> **Note:** the GitHub repo and its releases don't exist yet (repo is
+> local-only). Until a maintainer pushes tags and the release workflow runs,
+> install locally from source: `cargo build --release` →
+> `target/release/codegraph`.
+
+### Verify
+
+```sh
+codegraph --version       # prints the version
+codegraph update          # self-update to the latest release (SHA-256 verified)
+codegraph update --check  # just report whether an update exists
+```
+
+`codegraph update` replaces the binary in place after verifying the
+checksum; on any mismatch it aborts and leaves your binary untouched.
+
+### Index a repo
+
+```sh
 codegraph index /path/to/repo            # or: cd repo && codegraph index
-
-# check the store
-codegraph status
+codegraph status /path/to/repo           # schema version, freshness, gaps
 ```
 
 The index lives at `<repo>/.codegraph/index.db` (override with `--db`).
 Indexing is hash-incremental: unchanged files are never re-parsed.
 
+### Build from source
+
+```sh
+cargo build --release
+```
+
 ## Use it from a coding agent (MCP)
 
-`codegraph serve <repo>` speaks the MCP stdio transport — the portable way to
-plug into MCP clients. Tool names: `find_symbol`, `outline`, `callers`,
-`callees`, `get_context`.
+`codegraph init` detects supported agents (Claude Code, Cursor, OpenCode),
+shows the exact MCP config change, and applies it only after confirmation
+(`--yes` skips the prompt; `--dry-run` prints without writing; `--global`
+targets user configs instead of project configs; existing files are merged,
+never clobbered, with a `.codegraph.bak` backup).
+
+Prefer to do it by hand? `codegraph serve <repo>` speaks the MCP stdio
+transport. Tool names: `find_symbol`, `outline`, `callers`, `callees`,
+`get_context`.
 
 OpenCode (verified working, this repo) — `opencode.json` at the project root:
 
@@ -79,8 +127,11 @@ escape hatch.
 
 ## How it works
 
-- tree-sitter parses `.ts/.tsx` only (for now) → SQLite store, schema versioned
-  via `meta(schema_version)`, integer IDs, no custom binary format.
+- Language-agnostic core (`codegraph-parse`: walker + `LanguagePlugin`
+  trait; `codegraph-lang-ts`: TypeScript/JavaScript plugin) → SQLite store,
+  schema versioned via `meta(schema_version)`, integer IDs, no custom binary
+  format. Handles `.ts`, `.tsx`, `.mts`, `.cts`, `.js`, `.jsx`, `.mjs`,
+  `.cjs`.
 - Symbols carry a content hash (covers docstring + declaration); facts/edges are
   valid only against the hash they were computed against.
 - Resolution is deliberately conservative: named imports, namespace imports,
@@ -93,13 +144,15 @@ escape hatch.
 ## Repo layout
 
 ```
-crates/core    value types, hashing, tiny shared helpers
-crates/parse   tree-sitter extraction (symbols, imports, call sites)
-crates/store   SQLite store, schema migrations v1→v2, resolve pass
-crates/query   budgeted, terse query output formatting
-crates/mcp     stdio MCP server (rmcp)
-crates/cli     the `codegraph` binary (index / status / serve)
-fixtures/      3 sample TS repos with hand-verified expected JSON
+crates/core     value types, hashing, tiny shared helpers
+crates/parse    language-agnostic walker + LanguagePlugin trait
+crates/lang-ts  TypeScript/JavaScript plugin
+crates/store    SQLite store, schema migrations v1→v2, resolve pass
+crates/query    budgeted, terse query output formatting
+crates/mcp      stdio MCP server (rmcp)
+crates/cli      the `codegraph` binary (index / status / serve / update / init)
+install/        install.sh, install.ps1 + local test harness
+fixtures/       sample TS/JS repos with hand-verified expected JSON
 ```
 
 ## Development

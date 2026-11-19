@@ -1,5 +1,8 @@
 //! Orchestration shared by the `codegraph` binary and its integration tests.
 
+pub mod init;
+pub mod update;
+
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 

@@ -1,0 +1,129 @@
+name: release
+
+# Builds the prebuilt binaries for every supported platform and publishes
+# them, with SHA-256 checksums, as a GitHub Release when a v* tag is pushed.
+# install.sh / install.ps1 download from that release.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: linux-x86_64-musl,   os: ubuntu-latest,   target: x86_64-unknown-linux-musl }
+          - { name: linux-aarch64-musl, os: ubuntu-24.04-arm, target: aarch64-unknown-linux-musl }
+          - { name: macos-x86_64,        os: macos-13,         target: x86_64-apple-darwin }
+          - { name: macos-aarch64,       os: macos-latest,     target: aarch64-apple-darwin }
+          - { name: windows-x86_64,      os: windows-latest,   target: x86_64-pc-windows-msvc }
+          - { name: windows-aarch64,     os: windows-11-arm,   target: aarch64-pc-windows-msvc }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install musl toolchain (Linux only)
+        if: contains(matrix.target, 'musl')
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+
+      - name: Build release binary
+        run: cargo build --release --locked --target ${{ matrix.target }}
+
+      - name: Prepare asset
+        shell: bash
+        run: |
+          mkdir -p dist
+          ext=""
+          case "${{ matrix.target }}" in *windows*) ext=".exe";; esac
+          cp "target/${{ matrix.target }}/release/codegraph${ext}" "dist/codegraph-${{ matrix.target }}${ext}"
+
+      - name: Ad-hoc sign (macOS only; Apple Silicon refuses unsigned binaries)
+        if: contains(matrix.target, 'apple-darwin')
+        run: |
+          codesign --force --sign - "dist/codegraph-${{ matrix.target }}"
+          codesign --verify --verbose "dist/codegraph-${{ matrix.target }}"
+
+      - name: Verify dynamic dependencies are OS-provided (Linux)
+        if: contains(matrix.target, 'musl')
+        shell: bash
+        run: |
+          file "dist/codegraph-${{ matrix.target }}"
+          out="$(ldd "dist/codegraph-${{ matrix.target }}" 2>&1 || true)"
+          echo "$out"
+          # Allowlist: OS-provided libc/libm/libdl/libpthread/libgcc_s. Anything
+          # else (OpenSSL, sqlite, libstdc++...) fails the release.
+          if echo "$out" | grep -E "/\S+\.so\S*" | grep -vE "linux-vdso|libc\.musl|ld-musl|libc\.so\.6|libm\.so\.6|libdl\.so\.2|libpthread\.so\.0|libgcc_s\.so\.1" | grep .; then
+            echo "unexpected non-OS-provided library linked" >&2; exit 1
+          fi
+          echo "dynamic dependency check passed"
+
+      - name: Verify dynamic dependencies are OS-provided (macOS)
+        if: contains(matrix.target, 'apple-darwin')
+        run: |
+          otool -L "dist/codegraph-${{ matrix.target }}"
+          if otool -L "dist/codegraph-${{ matrix.target }}" | tail -n +2 | grep -vE "^\s+/(usr/lib|System)" | grep -qE "^\s+/"; then
+            echo "unexpected non-OS-provided dylib linked" >&2; exit 1
+          fi
+          echo "dynamic dependency check passed"
+
+      - name: Verify no CRT dependencies (Windows)
+        if: contains(matrix.target, 'windows')
+        shell: pwsh
+        run: |
+          # PE import tables store DLL names as plain ASCII; if a CRT import
+          # existed, the string VCRUNTIME140.dll / MSVCP140.dll would be in the
+          # binary. Rust's MSVC target statically links the C/C++ runtime, so
+          # these must never appear. (heuristic, but exact for this purpose)
+          $bin = "dist/codegraph-${{ matrix.target }}.exe"
+          $bytes = [System.IO.File]::ReadAllBytes($bin)
+          $text = [System.Text.Encoding]::ASCII.GetString($bytes)
+          $bad = @('VCRUNTIME140.dll', 'VCRUNTIME140_1.dll', 'MSVCP140.dll', 'CONCRT140.dll') | Where-Object { $text.Contains($_) }
+          if ($bad) {
+            Write-Error "non-system CRT dependency detected: $($bad -join ', ')"
+            exit 1
+          }
+          Write-Output "CRT dependency check passed"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: codegraph-${{ matrix.target }}
+          path: dist/codegraph-${{ matrix.target }}*
+          if-no-files-found: error
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Copy license and installers alongside the binaries
+        run: |
+          cp install/install.sh dist/install.sh
+          cp install/install.ps1 dist/install.ps1
+          cp LICENSE dist/LICENSE
+          chmod 0755 dist/install.sh
+
+      - name: Generate checksums.txt (sha256, sha256sum format)
+        run: |
+          cd dist
+          sha256sum codegraph-* > checksums.txt
+          cat checksums.txt
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
