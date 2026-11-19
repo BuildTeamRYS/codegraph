@@ -12,6 +12,13 @@ Format: `YYYY-MM-DD | area | decision | reason`
 - Start | parsing | tree-sitter first, SCIP/LSP in phase 4 | Tree-sitter gives syntax quickly; precise resolution comes later
 - Start | invariant | Facts, findings and verdicts are valid only while valid_hash and dep_fingerprint match | A stale "clean" verdict must never mislead an agent
 - Start | output | Dense terse text with confidence tags and file:line ranges | Models read tokens, not bytes; agents need a cheap way to verify
+- 2026-11-18 | language | TypeScript first, covering JS/JSX/TSX; Python second | Owner's own code is TS/JS, strong typing helps precision, large reach; Python later stress-tests dynamic-language handling
+- 2026-11-18 | architecture | Core schema is language-agnostic; each language is a `LanguagePlugin`; frameworks are separate plugins | Add languages without schema changes; adding Python must need zero core changes
+- 2026-11-18 | dependencies | Zero runtime dependencies: SQLite and grammars compiled in; users never need Node, npm, Python or Rust | Cannot assume developers have any toolchain installed
+- 2026-11-18 | resolution | Native resolver is the baseline; tsserver/SCIP are optional enhancers detected at runtime | scip-typescript and tsserver need Node, which breaks the no-dependency rule
+- 2026-11-18 | distribution | One-line install scripts (`install.sh`, `install.ps1`) fetch prebuilt binaries from GitHub Releases, SHA-256 verified, user-level install, no admin | curl/irm downloads do not set macOS quarantine or Windows Mark-of-the-Web flags, so no paid signing is needed at launch
+- 2026-11-18 | signing | macOS ad-hoc signature (`codesign -s -`) in CI; paid Apple/Windows signing deferred to Phase 12 | Apple Silicon kills unsigned binaries; paid signing only matters for enterprise or antivirus false positives
+- 2026-11-18 | models | Embedding models are opt-in downloads (`codegraph models pull`), never bundled or required | Keeps the binary small and dependency-free
 
 ## Thresholds to fill in as phases land
 
@@ -22,33 +29,21 @@ Format: `YYYY-MM-DD | area | decision | reason`
 ## Log
 
 <!-- Agent: add new decisions below this line. -->
-- 2026-11-18 | language | TypeScript ships first (.ts/.tsx/.mts/.cts), Python next | Owner decision; Kapruka (53.8k LOC) is the standing real-repo testbed
-- 2026-11-18 | repo layout | The RSVP directory is the codegraph repo root; PLAN.md/DECISIONS.md/STATUS.md already live here | Nothing sensible to move; crates/ and fixtures/ were added alongside
-- 2026-11-18 | store | Index lives at `<repo>/.codegraph/index.db` by default, `--db` overrides | Keeps the target repo clean; the directory is gitignored
-- 2026-11-18 | schema | edges and findings carry `valid_hash` (PLAN §3 lists edges without one) | Rule 5 wins over the column list: every edge/finding needs the content hash it was computed against
-- 2026-11-18 | schema | Imports go into a dedicated `imports` table, not `edges` | Import sources don't resolve to symbol row ids until phase 4; faking dst=0 would poison the graph
-- 2026-11-18 | schema | Migrations are code-applied, append-only, transactional, keyed off `meta.schema_version` | Simple, boring, rolls back cleanly on failure
-- 2026-11-18 | parse | `const x = () => ...` / `const x = function ...` indexed as `function` symbols | Idiomatic TS modules bind their exported handlers this way; skipping them would hide half the JS/TS surface
-- 2026-11-18 | parse | Symbol content_hash covers doc comment + declaration text | Docstring-only edits must still invalidate derived facts (rule 5)
-- 2026-11-18 | parse | `.d.ts` is flagged `is_generated`, not excluded | Declaration files carry real type info; flagging preserves signal without polluting rankings later
-- 2026-11-18 | parse | Files with tree-sitter ERROR nodes are indexed best-effort AND recorded as gaps | Never return partial results as if complete; status surfaces the gaps
-- 2026-11-18 | walk | Hidden files are walked (`.git` is always excluded by the ignore crate); `.gitignore` respected | Hidden TS config (`.eslintrc.ts` etc.) is still source
-- 2026-11-18 | walk | vendor dirs (node_modules/vendor/third_party/dist/build/out) are flagged `is_vendor`, still indexed | PLAN says flag, not skip
-- 2026-11-18 | tests | `expected.symbols.json` excludes `content_hash` | Hashes can't be hand-verified; covered by dedicated hash tests instead
-- 2026-11-18 | timestamps | meta timestamps are unix seconds; no chrono dependency yet | Phase 0 needs opaque freshness markers only
-- 2026-11-18 | mcp | Stdio MCP is the universal transport; one binary serves Claude Code/Desktop, Cursor, Windsurf, Zed, Continue and OpenCode — no per-client code | Avoids N client integrations; MCP config is per-client by design
-- 2026-11-18 | mcp | rmcp 3.11 SDK (owner choice); hand-rolled JSON-RPC fallback not needed | SDK works, has server+client; protocol kept to tools only
-- 2026-11-18 | mcp | MCP tools return dense text (not JSON), errors as helpful zero-match text inside the tool result | Agents read text best; protocol stays simple
-- 2026-11-18 | query | Token budget estimate = ceil(bytes/4), greedy fill from ranked lines, overflow prints "N more available, narrow by X" | Boring, adequate, testable; real tokenizer added only if agents complain
-- 2026-11-18 | query | Budget default 800 (owner) | PLAN default, owner confirmed
-- 2026-11-18 | store | edges carry a `line` column (v2 migration) | Agents need the call-site location, not just the callee's range
-- 2026-11-18 | parse | One import record per binding (named/default/namespace/side-effect/reexport) with local_name→imported_name map | Required to resolve named-import calls across modules
-- 2026-11-18 | resolve | Call graph is syntactic, full re-resolution after every index pass; incremental edge recompute deferred to phase 3 | Correctness first; 100k-LOC full resolve is already <1s
-- 2026-11-18 | resolve | Resolution order: `this.x` enclosing class → namespace/named import into resolved module → unique same-file → globally unique name; everything else `unresolved` | Conservative wins; never guess (dynamic dispatch stays unlabeled)
-- 2026-11-18 | resolve | Member calls through local variables (`cart.add`) and nested member exprs (`this.items.get`) stay unresolved until phase 4 SCIP | No type tracking; guessing would violate "never invent facts"
-- 2026-11-18 | resolve | Calls at module top level are counted (calls_unattributed) but create no edge | edges.src is NOT NULL; no module-level symbol exists to anchor
-- 2026-11-18 | resolve | Re-exports (`export ... from`) recorded as imports kind=reexport, never used for resolution | Re-export graphs resolve transitively at phase 4 with SCIP
-- 2026-11-18 | bench | p95 measured in-process on the synthetic 100k-LOC index: find_symbol 0.59ms, outline 0.13ms, get_context 0.11ms, callees 0.10ms | Far under the 100ms target; subprocess e2e overhead excluded as unrepresentative
-- 2026-11-18 | config | opencode.json (project) registers the release binary as `codegraph` project-locally with `serve .` | Project-local keeps machine-specific paths out of global config; release path noted, rebuild on schema/query changes
-- 2026-11-18 | license | PolyForm Shield 1.0.0; copyright holder = "ravijaanthony" (git handle, not a legal name yet) | Owner wants source-available but no competing products; contributions welcome. Holder line must be corrected to the full legal name/company before any public release — flagged to owner
-- 2026-11-18 | docs | Minimal dev-facing README; OpenCode config shown as the verified-working one, Claude Code config untested by author | Keep README honest about what was actually exercised
+- 2026-11-19 | repo layout | `crates/lang-ts` extracted from `crates/parse`; parse now owns the `LanguagePlugin` trait and the generic walker | New PLAN requires a language-agnostic core; grammar types must not leak into the walker/driver
+- 2026-11-19 | parse | JS/JSX/MJS/CJS parsed with the TypeScript grammar family: LANGUAGE_TSX for .tsx/.jsx, LANGUAGE_TYPESCRIPT for the rest | JS is a syntactic subset of TS; JSX needs the TSX dialect; no separate JS grammar required
+- 2026-11-19 | store | Module-resolution extension probing extended with js/jsx/mjs/cjs (TS probed first) | JS imports must resolve like TS imports
+- 2026-11-19 | tests | crlf-repo fixture pinned with `.gitattributes` (`* -text`); expected JSON hand-verified | Git would normalize CRLF; fixture proves Windows/Linux-safe line handling
+- 2026-11-19 | tests | Schema language-scan test matches exact identifiers, not substrings (`facts` contains `cts`) | Substring ban false-positived on legitimate tables
+- 2026-11-19 | distribution | install.sh installs the static musl asset on all Linux; no glibc asset published for now | musl-static runs on any Linux; one asset per arch keeps checksums.txt simple; glibc users unaffected
+- 2026-11-19 | distribution | Release base defaults to `https://github.com/ravijaanthony/codegraph`, overridable via `CODEGRAPH_RELEASE_BASE` | Repo has no GitHub remote yet (FUTURE_PLAN item 8); URL goes live when the owner pushes; the env var also covers mirrors/tests
+- 2026-11-19 | dependencies | `ureq` 3.5.2 with default-features off + rustls only, and pure-Rust `sha2` for verification | Binary must stay self-contained; native-tls would drag system OpenSSL onto musl targets
+- 2026-11-19 | distribution | `codegraph update` uses `/releases/latest` redirect to resolve the tag; aborts on any checksum mismatch; binary untouched on failure | Never install unverified code; PLAN phase 0.5 rules
+- 2026-11-19 | ci | Windows dynamic-dep check byte-scans the PE for VCRUNTIME/MSVCP strings; Linux uses an ldd allowlist; macOS requires /usr/lib|/System paths only | PLAN requires CI proof that only OS-provided libs are linked; no VS tooling dependency wanted
+- 2026-11-19 | ci | `windows-11-arm` and `ubuntu-24.04-arm` runners used for arm64 targets | GitHub-hosted arm64 runners; unverified until the first release run
+- 2026-11-19 | install | install.sh never installs without a verified SHA-256; no sudo path; PATH changes only via interactive prompt on a tty | Integrity + least surprise; piped installs print manual PATH instructions
+- 2026-11-19 | init | Agent MCP configs written only after confirmation (or `--yes`); unparseable files never clobbered; `.codegraph.bak` before every rewrite | Losing a hand-edited MCP config is worse than not configuring
+- 2026-11-19 | init | Project mode default; `--global` targets user configs (`~/.claude.json`, `~/.cursor/mcp.json`); PATH lookup only in interactive use, tests use filesystem markers only | Deterministic tests; sensible defaults
+- 2026-11-19 | resolve | Call resolution stays in `codegraph-store::resolve` operating on generic rows (symbols/imports/call_sites); the `LanguagePlugin` trait does not yet carry a resolve method | Resolution needs nothing TS-specific in the schema; native resolver lands in phase 4 (PLAN trait method "resolve references" deferred there)
+- 2026-11-19 | process | Owner's 2026-11-19 working-tree edit truncated this file's detailed 2026-11-18 log; old entries recoverable via git | Keeping this line because the file format demands the edit be visible to future sessions
+- 2026-11-19 | perf | Synthetic 100k-LOC TS repo (3449 files / 17245 symbols): full index ~1.0s, no-op re-index 0.05s | Phase 1 acceptance (<2 min) met with 60x headroom; real-repo proof needs Kapruka (owner approval pending)
+- 2026-11-19 | version | Workspace bumped 0.1.0 → 0.2.0 | New plugin architecture + JS support + update/init; public release will tag from this line
