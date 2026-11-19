@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "codegraph": {
+      "type": "stdio",
+      "command": "/home/ravijaanthony/.codegraph/bin/codegraph",
+      "args": ["serve", "/home/ravijaanthony/Documents/dev/RSVP"]
+    }
+  }
+}
