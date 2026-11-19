@@ -100,3 +100,32 @@ fn gaps_are_recorded_and_cleared() {
     store.clear_gap("src/broken.ts").unwrap();
     assert!(store.gaps().unwrap().is_empty());
 }
+
+#[test]
+fn concurrent_first_open_on_fresh_file_migrates_exactly_once() {
+    // Reproduces the CI failure where a background first-index and a
+    // `status` poll both opened the same brand-new database at the same
+    // time; one connection saw an empty db, raced the other into
+    // migration, and died with SQLITE_BUSY. Now both must succeed.
+    let dir = tempfile::tempdir().unwrap();
+    let db = dir.path().join("index.db");
+    let db = std::sync::Arc::new(db);
+
+    let mut handles = Vec::new();
+    for _ in 0..8 {
+        let db = db.clone();
+        handles.push(std::thread::spawn(move || Store::open(&db).map(|_| ())));
+    }
+    let mut oks = 0;
+    let mut errors = Vec::new();
+    for h in handles {
+        match h.join().unwrap() {
+            Ok(()) => oks += 1,
+            Err(e) => errors.push(format!("{e}")),
+        }
+    }
+    let store = Store::open(&db).unwrap();
+    assert_eq!(store.schema_version().unwrap(), SCHEMA_VERSION);
+    assert!(errors.is_empty(), "{errors:?}");
+    assert_eq!(oks, 8);
+}

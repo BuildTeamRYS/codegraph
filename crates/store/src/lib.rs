@@ -176,8 +176,28 @@ impl Store {
             })?;
         }
         let conn = Connection::open(path)?;
-        conn.pragma_update(None, "journal_mode", "WAL")?;
+        // The first connection to open a brand-new database converts it to
+        // WAL (an exclusive header write); a concurrent opener whose pragma
+        // lands mid-conversion gets SQLITE_BUSY instead of waiting, so
+        // retry briefly — WAL is persistent, so once anyone converts it,
+        // everyone else's pragma is a cheap no-op.
+        let mut attempt = 0;
+        loop {
+            match conn.pragma_update(None, "journal_mode", "WAL") {
+                Ok(()) => break,
+                Err(e) => {
+                    attempt += 1;
+                    if attempt >= 100 {
+                        return Err(e.into());
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(10));
+                }
+            }
+        }
         conn.pragma_update(None, "foreign_keys", "ON")?;
+        // Wait for concurrent writers instead of erroring instantly: this
+        // connection may write at the same time as the background indexer.
+        conn.pragma_update(None, "busy_timeout", 5000)?;
         let store = Store {
             conn,
             path: path.to_path_buf(),
@@ -189,6 +209,7 @@ impl Store {
     pub fn in_memory() -> Result<Self, StoreError> {
         let conn = Connection::open_in_memory()?;
         conn.pragma_update(None, "foreign_keys", "ON")?;
+        conn.pragma_update(None, "busy_timeout", 5000)?;
         let store = Store {
             conn,
             path: PathBuf::from(":memory:"),
@@ -197,47 +218,70 @@ impl Store {
         Ok(store)
     }
 
-    fn migrate(&self) -> Result<(), StoreError> {
-        let meta_exists: bool = self.conn.query_row(
+    /// The read-then-decide sequence (is it migrated?) and the migrations
+    /// themselves must be atomic with respect to each other, or two
+    /// connections opening a brand-new database will both try to migrate it.
+    /// `BEGIN IMMEDIATE` takes the write lock *before* we re-read the
+    /// version inside the critical section, so the loser of the race sees
+    /// `schema_version = SCHEMA_VERSION` and skips all migrations.
+    fn current_version(conn: &Connection) -> Result<u32, StoreError> {
+        let meta_exists: bool = conn.query_row(
             "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'meta'",
             [],
             |r| Ok(r.get::<_, i64>(0)? > 0),
         )?;
-        let current: u32 = if meta_exists {
-            self.conn
-                .query_row(
-                    "SELECT value FROM meta WHERE key = 'schema_version'",
-                    [],
-                    |r| r.get::<_, String>(0),
-                )
-                .optional()?
-                .and_then(|v| v.parse().ok())
-                .unwrap_or(0)
+        Ok(if meta_exists {
+            conn.query_row(
+                "SELECT value FROM meta WHERE key = 'schema_version'",
+                [],
+                |r| r.get::<_, String>(0),
+            )
+            .optional()?
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(0)
         } else {
             0
-        };
-        if current >= SCHEMA_VERSION {
+        })
+    }
+
+    fn migrate(&self) -> Result<(), StoreError> {
+        // Fast path without the write lock at all (existing databases).
+        if Self::current_version(&self.conn)? >= SCHEMA_VERSION {
             return Ok(());
         }
-        // Migrations are append-only and applied in order inside one
-        // transaction; failure rolls everything back so the db is never
-        // half-migrated.
-        let tx = self.conn.unchecked_transaction()?;
-        if current < 1 {
-            tx.execute_batch(MIGRATION_1)
-                .map_err(|e| StoreError::Migration(1, e.to_string()))?;
+        self.conn.execute_batch("BEGIN IMMEDIATE")?;
+        let result = (|| -> Result<(), StoreError> {
+            let current = Self::current_version(&self.conn)?;
+            if current >= SCHEMA_VERSION {
+                return Ok(()); // another connection migrated already
+            }
+            if current < 1 {
+                self.conn
+                    .execute_batch(MIGRATION_1)
+                    .map_err(|e| StoreError::Migration(1, e.to_string()))?;
+            }
+            if current < 2 {
+                self.conn
+                    .execute_batch(MIGRATION_2)
+                    .map_err(|e| StoreError::Migration(2, e.to_string()))?;
+            }
+            self.conn.execute(
+                "INSERT INTO meta(key, value) VALUES ('schema_version', ?1)
+                 ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                params![SCHEMA_VERSION.to_string()],
+            )?;
+            Ok(())
+        })();
+        match result {
+            Ok(()) => {
+                self.conn.execute_batch("COMMIT")?;
+                Ok(())
+            }
+            Err(e) => {
+                let _ = self.conn.execute_batch("ROLLBACK");
+                Err(e)
+            }
         }
-        if current < 2 {
-            tx.execute_batch(MIGRATION_2)
-                .map_err(|e| StoreError::Migration(2, e.to_string()))?;
-        }
-        tx.execute(
-            "INSERT INTO meta(key, value) VALUES ('schema_version', ?1)
-             ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-            params![SCHEMA_VERSION.to_string()],
-        )?;
-        tx.commit()?;
-        Ok(())
     }
 
     pub fn schema_version(&self) -> Result<u32, StoreError> {
