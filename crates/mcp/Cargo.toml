@@ -7,9 +7,10 @@ license.workspace = true
 
 [dependencies]
 codegraph-core.workspace = true
+codegraph-index.workspace = true
 codegraph-query.workspace = true
 codegraph-store.workspace = true
-rmcp = { version = "3.11", features = ["transport-io"] }
+rmcp = { version = "3.11", features = ["transport-io", "client", "transport-child-process"] }
 tokio = { version = "1", features = ["full"] }
 schemars = { version = "1", features = ["derive"] }
 anyhow.workspace = true

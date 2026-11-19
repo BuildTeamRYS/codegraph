@@ -1,2 +1,4 @@
 target/
 .codegraph/
+*.codegraph.bak
+*.codegraph.state.json

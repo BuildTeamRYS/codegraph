@@ -27,26 +27,6 @@ pub enum Freshness {
     Unknown,
 }
 
-impl Freshness {
-    fn header(&self) -> String {
-        match self {
-            Freshness::Fresh(c) => format!("index@{} fresh", short_commit(c)),
-            Freshness::Stale { indexed, head } => {
-                format!(
-                    "index@{} stale (head={})",
-                    short_commit(indexed),
-                    short_commit(head)
-                )
-            }
-            Freshness::Unknown => "index@unknown".to_string(),
-        }
-    }
-}
-
-fn short_commit(c: &str) -> String {
-    c.chars().take(12).collect()
-}
-
 const DEFAULT_BUDGET: usize = 800;
 
 struct Budgeter {
@@ -279,4 +259,37 @@ pub fn get_context(
         ));
     }
     Ok(b.finish("get_context on one symbol name at a time"))
+}
+
+fn short_commit(c: &str) -> String {
+    c.chars().take(12).collect()
+}
+
+/// Compute freshness from stored meta + HEAD (shared by MCP and CLI).
+pub fn freshness(indexed: Option<&str>, head: Option<&str>) -> Freshness {
+    match (indexed, head) {
+        (Some(i), Some(h)) if i == h => Freshness::Fresh(i.to_string()),
+        (Some(i), Some(h)) => Freshness::Stale {
+            indexed: i.to_string(),
+            head: h.to_string(),
+        },
+        _ => Freshness::Unknown,
+    }
+}
+
+impl Freshness {
+    /// Dense one-line header, e.g. `index@a1b2c3 fresh`.
+    pub fn header(&self) -> String {
+        match self {
+            Freshness::Fresh(c) => format!("index@{} fresh", short_commit(c)),
+            Freshness::Stale { indexed, head } => {
+                format!(
+                    "index@{} stale (head={})",
+                    short_commit(indexed),
+                    short_commit(head)
+                )
+            }
+            Freshness::Unknown => "index@unknown".to_string(),
+        }
+    }
 }

@@ -1,0 +1,18 @@
+[package]
+name = "codegraph-agents"
+description = "Data-driven registry of coding agents and how to wire codegraph into them"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+thiserror.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+jsonc-parser.workspace = true
+toml_edit.workspace = true
+
+[dev-dependencies]
+tempfile = "3"

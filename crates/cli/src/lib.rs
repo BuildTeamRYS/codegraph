@@ -1,89 +1,61 @@
 //! Orchestration shared by the `codegraph` binary and its integration tests.
 
-pub mod init;
+pub mod setup;
 pub mod update;
 
-use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
-use anyhow::{Context, Result};
 pub use codegraph_core::git_head_commit;
-use codegraph_lang_ts::TsPlugin;
-use codegraph_parse::{scan, FileOutcome, LanguagePlugin};
-use codegraph_store::{IndexStats, Store};
+pub use codegraph_index::{default_db_path, index_repo};
 
-/// Default index location: `<repo>/.codegraph/index.db` (gitignored).
-pub fn default_db_path(repo: &Path) -> PathBuf {
-    repo.join(".codegraph").join("index.db")
-}
+/// Re-exported for CLI/tests that construct freshness headers.
+pub use codegraph_query::{freshness, Freshness};
 
-fn now_rfc3339() -> String {
-    // No chrono dependency in phase 0; seconds precision is enough for meta.
-    let secs = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
-    format!("{}", secs)
-}
-
-/// Index `root` into `store`. Only files whose content hash changed are
-/// re-parsed; everything else is skipped. Returns per-run stats.
-pub fn index_repo(store: &Store, root: &Path) -> Result<IndexStats> {
-    let mut stats = IndexStats::default();
-    let existing = store.existing_files()?;
-    let plugin = TsPlugin::new();
-    let plugins: Vec<&dyn LanguagePlugin> = vec![&plugin];
-    let scan = scan(root, &existing, &plugins).context("failed to scan repository")?;
-    stats.files_scanned = scan.scanned;
-
-    for outcome in &scan.outcomes {
-        match outcome {
-            FileOutcome::Unchanged { .. } => stats.files_skipped += 1,
-            FileOutcome::Parsed(p) => {
-                stats.files_parsed += 1;
-                let written = store.replace_file(
-                    &p.path,
-                    &p.lang,
-                    &p.content_hash,
-                    p.size,
-                    &now_rfc3339(),
-                    p.is_generated,
-                    p.is_vendor,
-                    &p.symbols,
-                    &p.imports,
-                    &p.calls,
-                )?;
-                stats.symbols_written += written;
-                if p.had_errors {
-                    store.record_gap(
-                        &p.path,
-                        "tree-sitter reported syntax errors; file indexed best-effort",
-                    )?;
-                    stats.gaps += 1;
-                } else {
-                    store.clear_gap(&p.path)?;
-                }
-            }
-            FileOutcome::Failed { path, error } => {
-                store.record_gap(path, error)?;
-                stats.gaps += 1;
-            }
+/// Resolve the repo root for `path`:
+/// 1. explicit argument wins;
+/// 2. `CODEGRAPH_PROJECT` environment variable;
+/// 3. walk up from cwd to the nearest `.git` (monorepo-friendly);
+/// 4. the cwd itself.
+pub fn resolve_repo(path: Option<&Path>) -> PathBuf {
+    if let Some(p) = path {
+        return p.to_path_buf();
+    }
+    if let Some(p) = std::env::var_os("CODEGRAPH_PROJECT").filter(|v| !v.is_empty()) {
+        return PathBuf::from(p);
+    }
+    let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    let mut dir = cwd.as_path();
+    loop {
+        if dir.join(".git").exists() {
+            return dir.to_path_buf();
+        }
+        match dir.parent() {
+            Some(parent) => dir = parent,
+            None => return cwd,
         }
     }
+}
 
-    // Rebuild calls edges from scratch (cheap at this scale; phase 3 makes it incremental).
-    let resolve = store.resolve_calls()?;
-    stats.calls_resolved = resolve.resolved;
-    stats.calls_unresolved = resolve.unresolved;
-    stats.calls_unattributed = resolve.unattributed;
-
-    let seen: HashSet<String> = scan.seen_paths;
-    stats.files_removed = store.remove_files_not_in(&seen)?;
-
-    match git_head_commit(root) {
-        Some(c) => store.set_meta("indexed_commit", &c)?,
-        None => store.set_meta("indexed_commit", "unknown")?,
+pub fn home_dir() -> Option<PathBuf> {
+    #[cfg(windows)]
+    {
+        std::env::var_os("USERPROFILE")
+            .map(PathBuf::from)
+            .or_else(|| {
+                Some(PathBuf::from(format!(
+                    "{}{}",
+                    std::env::var_os("HOMEDRIVE")?,
+                    std::env::var_os("HOMEPATH")?
+                )))
+            })
     }
-    store.set_meta("indexed_at", &now_rfc3339())?;
-    Ok(stats)
+    #[cfg(not(windows))]
+    {
+        std::env::var_os("HOME").map(PathBuf::from)
+    }
+}
+
+/// The stdio repo for agent configs: the canonical repo path.
+pub fn canonical_repo(repo: &Path) -> PathBuf {
+    repo.canonicalize().unwrap_or_else(|_| repo.to_path_buf())
 }

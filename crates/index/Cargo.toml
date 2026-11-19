@@ -1,0 +1,13 @@
+[package]
+name = "codegraph-index"
+description = "Indexing orchestration: walk a repo, parse via LanguagePlugins, write to the store"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+codegraph-core.workspace = true
+codegraph-parse.workspace = true
+codegraph-lang-ts.workspace = true
+codegraph-store.workspace = true
+anyhow.workspace = true
