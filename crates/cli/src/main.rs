@@ -89,6 +89,23 @@ enum Command {
 }
 
 fn main() -> Result<()> {
+    // Well-mannered Unix CLI: if our downstream closes the pipe early
+    // (e.g. `codegraph status | head -1`), exit quietly instead of panicking
+    // on the println! EPIPE.
+    std::panic::set_hook(Box::new(|info| {
+        let msg = info
+            .payload()
+            .downcast_ref::<String>()
+            .map(|s| s.as_str())
+            .or_else(|| info.payload().downcast_ref::<&str>().copied())
+            .unwrap_or("");
+        if msg.contains("Broken pipe") || msg.contains("broken pipe") {
+            std::process::exit(0);
+        }
+        eprintln!("panic: {msg}");
+        std::process::exit(101);
+    }));
+
     let cli = Cli::parse();
     match cli.command {
         Command::Index { path, db } => {
