@@ -42,11 +42,13 @@ pub fn home_dir() -> Option<PathBuf> {
         std::env::var_os("USERPROFILE")
             .map(PathBuf::from)
             .or_else(|| {
-                Some(PathBuf::from(format!(
-                    "{}{}",
-                    std::env::var_os("HOMEDRIVE")?,
-                    std::env::var_os("HOMEPATH")?
-                )))
+                // HOMEDRIVE + HOMEPATH is legacy belt-and-braces; USERPROFILE
+                // is virtually always set on real Windows. OsString::push
+                // concatenates raw bytes — OsString has no Display impl and
+                // paths may not be UTF-8, so no format!().
+                let mut buf = std::ffi::OsString::from(std::env::var_os("HOMEDRIVE")?);
+                buf.push(std::env::var_os("HOMEPATH")?);
+                Some(PathBuf::from(buf))
             })
     }
     #[cfg(not(windows))]
