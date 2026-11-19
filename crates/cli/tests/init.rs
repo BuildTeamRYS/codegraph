@@ -99,8 +99,19 @@ fn init_yes_configures_claude_code_and_writes_instruction_block() {
     let doc: serde_json::Value = serde_json::from_str(&raw).unwrap();
     let entry = &doc["mcpServers"]["codegraph"];
     assert_eq!(entry["args"][0], "serve");
-    // Shim lives in the fake HOME and is what the config points at.
-    let shim = sb.home.join(".codegraph").join("bin").join("codegraph");
+    // Shim lives in the fake HOME and is what the config points at:
+    //   Unix:    <home>/.codegraph/bin/codegraph
+    //   Windows: <home>/AppData/Local/codegraph/bin/codegraph.exe
+    let shim = if cfg!(windows) {
+        sb.home
+            .join("AppData")
+            .join("Local")
+            .join("codegraph")
+            .join("bin")
+            .join("codegraph.exe")
+    } else {
+        sb.home.join(".codegraph").join("bin").join("codegraph")
+    };
     assert!(shim.is_file(), "shim missing: {t}");
     assert_eq!(entry["command"], serde_json::json!(shim.to_string_lossy()));
     // Instruction block landed in CLAUDE.md.

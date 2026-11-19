@@ -58,6 +58,25 @@ pub fn home_dir() -> Option<PathBuf> {
 }
 
 /// The stdio repo for agent configs: the canonical repo path.
+///
+/// On Windows, `canonicalize()` returns extended-length paths prefixed
+/// with `\\?\` (or `\\?\UNC\` for UNC shares). That prefix is understood by
+/// the Rust/Windows APIs but confuses some agent tool stacks and JSON
+/// tooling, and it leaks into config files and prompt fill contexts, so we
+/// strip it back to a plain absolute path.
 pub fn canonical_repo(repo: &Path) -> PathBuf {
-    repo.canonicalize().unwrap_or_else(|_| repo.to_path_buf())
+    let canon = repo.canonicalize().unwrap_or_else(|_| repo.to_path_buf());
+    #[cfg(windows)]
+    {
+        let s = canon.to_string_lossy().into_owned();
+        if let Some(unc) = s.strip_prefix(r"\\?\UNC\") {
+            return PathBuf::from(format!(r"\\{unc}"));
+        }
+        if let Some(rest) = s.strip_prefix(r"\\?\") {
+            return PathBuf::from(rest);
+        }
+        canon
+    }
+    #[cfg(not(windows))]
+    canon
 }

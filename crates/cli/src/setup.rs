@@ -727,8 +727,17 @@ pub fn doctor(ids: &[String], scope: Option<Scope>, path: Option<&Path>) -> Resu
             }
 
             // 2. Configured command exists and is executable.
+            //
+            // "Path-like" = contains a separator or drive letter, in either
+            // spelling — MCP clients and agent docs use both `C:\x\y.exe` and
+            // `C:/x/y.exe`-style spellings, and on Windows `/path` is a valid
+            // (drive-relative) path. Bare names (`npx`, `codegraph`) are PATH
+            // lookups and get the warning branch instead.
             let cmd_path = Path::new(&command);
-            if cmd_path.is_absolute() || command.contains(std::path::MAIN_SEPARATOR) {
+            let path_like = command.contains('/')
+                || command.contains('\\')
+                || (command.len() > 1 && command.as_bytes()[1] == b':');
+            if path_like || cmd_path.is_absolute() {
                 if cmd_path.is_file() {
                     #[cfg(unix)]
                     {
