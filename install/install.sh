@@ -1,15 +1,10 @@
 #!/bin/sh
 # codegraph installer — macOS and Linux.
 #
-# One-liner (public releases only):
 #   curl -fsSL https://github.com/BuildTeamRYS/codegraph/releases/latest/download/install.sh | sh
 #
-# IMPORTANT: this repository is private. Both remote install modes (latest
-# and --version) need a GitHub token, or a download from your logged-in
-# browser. For private/offline use, download the release assets manually
-# (browser) or use a pre-made bundle, then install with:
-#   sh install.sh --from-dir /path/to/assets
-# (see README.md "Install (private demo)").
+# The repo is public: the one-liner above installs the latest release with no
+# token. Offline/demo bundles work via --from-dir.
 #
 # What it does, always printed as it happens:
 #   1. detects OS and CPU architecture
@@ -171,13 +166,13 @@ elif [ -n "$PINNED_VERSION" ]; then
     TAG="v${PINNED_VERSION#v}"
     say "  pinned version -> tag $TAG"
 else
-    say "  resolving latest release from $BASE (private repos 404 here; use --from-dir or a browser download)"
+    say "  resolving latest release from $BASE"
     LOCATION="$(curl -fsSI -o /dev/null -w '%{redirect_url}' "$BASE/releases/latest" 2>/dev/null)" \
         || LOCATION="$(wget --spider -S "$BASE/releases/latest" 2>&1 | sed -n 's/^ *Location: //p' | tail -1 | tr -d '\r')" \
         || LOCATION=""
     case "$LOCATION" in
         *tag/*) TAG="${LOCATION##*/tag/}" ;;
-        *) fail "could not resolve latest release from $BASE — the repo is private or has no releases; use --from-dir or download assets via a browser (see README)" ;;
+        *) fail "could not resolve latest release from $BASE — check your connection and that a release exists (https://github.com/BuildTeamRYS/codegraph/releases); --from-dir installs from a local folder" ;;
     esac
     TAG="$(printf '%s' "$TAG" | tr -d '\r')"
     say "  latest release: $TAG"

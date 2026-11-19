@@ -63,12 +63,29 @@ If your viewer does not render Mermaid, see [docs/architecture.svg](docs/archite
 
 ## Install
 
-This repository is **private**, so an anonymous one-liner download cannot work (a browser session won't authenticate a plain `curl`). Two supported ways to install for the demo, plus one for later:
+**macOS and Linux — one line:**
 
-### Option 1 — Browser download (works today, no scripts needed)
+```sh
+curl -fsSL https://github.com/BuildTeamRYS/codegraph/releases/latest/download/install.sh | sh
+```
 
-1. Open `https://github.com/BuildTeamRYS/codegraph/releases` in your logged-in browser.
-2. Download the one asset for your machine, plus `checksums.txt`:
+**Windows (PowerShell) — one line:**
+
+```powershell
+irm https://github.com/BuildTeamRYS/codegraph/releases/latest/download/install.ps1 | iex
+```
+
+You can read the scripts first: they live in [`install/`](install/). Both verify a SHA-256 checksum before writing anything, print each step ([1/6] detect → [6/6] summary with paths), and install into `~/.codegraph/bin` (Windows: `%LOCALAPPDATA%\codegraph\bin`) — no admin rights, no system-wide package manager. `--uninstall` / `-Uninstall` removes the binary and offers to undo the agent configs `codegraph init` created. The binaries are self-contained:
+
+- **Linux** — static musl; runs unchanged on every distro, including RPM-based ones (Fedora, RHEL, openSUSE). Nothing to install beyond `curl` or `wget`.
+- **macOS** — the `curl | sh` path never sets a quarantine attribute, so Gatekeeper stays quiet. (If you download through a browser instead, see the fallback below.)
+- **Windows** — unsigned, so SmartScreen may say "Windows protected your PC": **More info → Run anyway**. This is expected until signed binaries ship.
+
+If any of that doesn't work for you, there are three fallbacks, in order of preference:
+
+### Fallback 1 — Browser download
+
+1. Open `https://github.com/BuildTeamRYS/codegraph/releases` and download the asset for your machine, plus `checksums.txt`:
 
    | Machine | Asset |
    |---|---|
@@ -79,8 +96,8 @@ This repository is **private**, so an anonymous one-liner download cannot work (
    | Windows x86_64 | `codegraph-x86_64-pc-windows-msvc.exe` |
    | Windows on ARM | `codegraph-aarch64-pc-windows-msvc.exe` (if present), or the x86_64 asset — Windows emulates it |
 
-3. Verify the checksum (optional but recommended): compare your file against the matching line in `checksums.txt` (`shasum -a 256 ./codegraph-…` on macOS, `sha256sum ./codegraph-…` on Linux, `Get-FileHash .\codegraph-… -Algorithm SHA256` on Windows).
-4. Install it:
+2. Verify the checksum: `shasum -a 256 ./codegraph-…` (macOS), `sha256sum ./codegraph-…` (Linux), `Get-FileHash .\codegraph-… -Algorithm SHA256` (Windows) and compare with the matching line in `checksums.txt`.
+3. Install:
 
    **Linux:**
    ```sh
@@ -88,22 +105,22 @@ This repository is **private**, so an anonymous one-liner download cannot work (
    ./codegraph-x86_64-unknown-linux-musl --version
    ./codegraph-x86_64-unknown-linux-musl init    # configures your coding agents for this repo
    ```
-   **macOS:** the browser marks the download quarantined. First run fails with "Apple cannot check it…" — either right-click → Open once, or:
+   **macOS:** the browser quarantine-blocks unsigned binaries. Either right-click → **Open** once, or:
    ```sh
    chmod +x codegraph-aarch64-apple-darwin
    xattr -d com.apple.quarantine ./codegraph-aarch64-apple-darwin
    ./codegraph-aarch64-apple-darwin --version
    ./codegraph-aarch64-apple-darwin init
    ```
-   **Windows:** the browser attaches Mark-of-the-Web. If SmartScreen prompts "Windows protected your PC": **More info → Run anyway**, then:
+   **Windows:** if SmartScreen prompts "Windows protected your PC": **More info → Run anyway**, then:
    ```powershell
    .\codegraph-x86_64-pc-windows-msvc.exe --version
    .\codegraph-x86_64-pc-windows-msvc.exe init
    ```
 
-### Option 4 — Offline bundle (no network: pre-made zip, installs from a folder)
+### Fallback 2 — Offline bundle (no network)
 
-**For the demo organizer** — make one zip per OS you need (targets from the table above):
+**For the bundle author** — make one zip per OS you need (targets from the table above):
 ```sh
 mkdir -p codegraph-demo && cd codegraph-demo
 # copy the four assets + install.sh + install.ps1 + checksums.txt from the release page into this folder
@@ -113,29 +130,16 @@ Compress-Archive -Path codegraph-x86_64-pc-windows-msvc.exe, install.ps1, checks
 ```
 Hand the zip out however you already share files (Teams/Slack/email/internal share).
 
-**For attendees** — unzip, then:
+**For recipients** — unzip, then:
 ```sh
 # macOS / Linux
 ./install.sh --from-dir .
 # Windows
 powershell -ExecutionPolicy Bypass -File .\install.ps1 -FromDir .
 ```
-The installer prints each step (detect → stage → verify → install → PATH), verifies `checksums.txt` (aborts on mismatch), and installs to `~/.codegraph/bin` (or `%LOCALAPPDATA%\codegraph\bin`). No network access is used at any point. Undo with `--uninstall` / `-Uninstall`.
+The installer prints each step, verifies `checksums.txt` (aborts on mismatch), and installs exactly like the one-liner. No network access is used at any point.
 
-### Later (once the repo is public or internal)
-
-With anonymous access, the classic one-liners work again:
-```sh
-# macOS / Linux
-curl -fsSL https://github.com/BuildTeamRYS/codegraph/releases/latest/download/install.sh | sh
-```
-```powershell
-# Windows (PowerShell)
-irm https://github.com/BuildTeamRYS/codegraph/releases/latest/download/install.ps1 | iex
-```
-The installer prints a step-by-step log (`[1/6] detect → [6/6] PATH`) with sizes and ETA, verifies the SHA-256, and supports `--uninstall` (which also removes the PATH line hint and offers to undo agent configs). The scripts are in [`install/`](install/). Linux binaries are static musl — they run unchanged on **every distro, including RPM-based ones** (Fedora, RHEL, openSUSE), with no system dependencies.
-
-### Build from source (fallback; needs Rust)
+### Fallback 3 — Build from source (needs Rust)
 
 ```sh
 cargo build --release

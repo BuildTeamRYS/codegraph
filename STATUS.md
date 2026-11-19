@@ -60,13 +60,13 @@ Where codegraph failed or wasted tokens when used on its own repo:
 
 ## Next step
 
-1. Phase 2.6: query log, `status`/`stats`/`doctor` polish, post-install guidance, generated per-agent docs + README table from the adapter table, architecture.mmd/SVG sync (CI `mmdc` drift check).
-2. Or Phase 3 first (file watcher + git-diff incremental re-index + property test; dogfooding proper). The plan's task list does 2.6 first (task 4) then 3.
-3. **Awaiting owner: switch to release mode** — delete the manual `0.2.0` tag/release, push `v0.2.0` to fire CI (cross-compiled Linux ARM64, best-effort Windows ARM64 with install.ps1 x86_64 fallback, exactly the 9 public assets). Then verify on clean machines per Option 1/4 in README.md.
+1. **Owner action: tag `v0.2.0`** (`git tag v0.2.0 && git push origin v0.2.0`) — fires `release.yml`, publishes the Release with the 9 assets (Windows ARM64 best-effort, install.ps1 falls back to x86_64). Then verify on clean Windows/macOS/Linux machines — the one-liners in README.md now work anonymously. Also consider deleting the stale manual `0.2.0` pre-release page.
+2. Phase 2.6: query log, `status`/`stats`/`doctor` polish, post-install guidance, generated per-agent docs + README table from the adapter table, architecture.mmd/SVG sync (CI `mmdc` drift check).
+3. Or Phase 3 first (file watcher + git-diff incremental re-index + property test; dogfooding proper). The plan's task list does 2.6 first (task 4) then 3.
 
 ## Open questions for the owner
 
-1. LICENSE copyright line still says "ravijaanthony" (git handle) — confirm or correct before any public release.
-2. Release base URL now points at `github.com/BuildTeamRYS/codegraph` (the actual remote). Confirm this stays the permanent org.
-3. Windows-ARM64 asset will be present only if the ARM64 MSVC toolset exists on the free `windows-latest` runner; otherwise install.ps1 transparently falls back to the x86_64 binary (Windows emulates it). Acceptable?
-4. RPM-based Linux (Fedora/RHEL/openSUSE) support comes from the static musl binary + `install.sh` — no `.rpm` packages at this stage. Confirm packaging stays deferred (Phase 12).
+1. LICENSE copyright line still says "ravijaanthony" (git handle) — confirm or correct.
+2. Windows-ARM64 asset present only if the ARM64 MSVC toolset exists on the free `windows-latest` runner; otherwise install.ps1 falls back to x86_64 transparently. Acceptable?
+3. RPM-based Linux (Fedora/RHEL/openSUSE): static musl + `install.sh`, no `.rpm` packages at this stage. Confirm deferred (Phase 12).
+4. Tag choice for the first public release: `v0.2.0` (never published, clean reuse) or bump to `v0.2.1`?

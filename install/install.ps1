@@ -2,15 +2,10 @@
 <#
 codegraph installer - Windows (x64 and arm64).
 
-One-liner (public releases only):
   irm https://github.com/BuildTeamRYS/codegraph/releases/latest/download/install.ps1 | iex
 
-IMPORTANT: this repository is private. Both remote modes (latest and -Version)
-need a GitHub token, or a download from your logged-in browser. For
-private/offline use, download the release assets manually, or use a pre-made
-bundle, then install with:
-  powershell -ExecutionPolicy Bypass -File install.ps1 -FromDir .\assets
-(see README.md "Install (private demo)").
+The repo is public: the one-liner above installs the latest release with no
+token. Offline/demo bundles work via -FromDir.
 
 What it does, always printed as it happens:
   1. detects CPU architecture
@@ -28,6 +23,7 @@ Switches:
   -Uninstall         remove $env:LOCALAPPDATA\codegraph (or -InstallRoot); prints the
                      PATH entry to remove and offers to undo agent configs
   -Yes               with -Uninstall: skip the confirmation prompts
+  -SkipPath          don't touch or prompt for PATH (for scripts/CI)
   -ReleaseBase URL   base URL of releases (mirrors/tests)
   -InstallRoot DIR   install directory (default: $env:LOCALAPPDATA\codegraph)
 #>
@@ -37,6 +33,7 @@ param(
     [switch]$Uninstall,
     [switch]$Yes,
     [switch]$SkipChecksum,
+    [switch]$SkipPath,
     [string]$FromDir,
     [string]$ReleaseBase,
     [string]$InstallRoot,
@@ -145,7 +142,7 @@ if ($FromDir) {
     $Tag = if ($Version.StartsWith('v')) { $Version } else { "v$Version" }
     Say "  pinned version -> tag $Tag"
 } else {
-    Say "  resolving latest release from $Base (private repos 404 here; use -FromDir or a browser download)"
+    Say "  resolving latest release from $Base"
     $Tag = $null
     try {
         $req = [System.Net.HttpWebRequest]::Create("$Base/releases/latest")
@@ -159,7 +156,7 @@ if ($FromDir) {
         $resp = $_.Exception.Response
         if ($resp -and $resp.Headers['Location']) { $Tag = ($resp.Headers['Location'] -split '/tag/')[-1].Trim('/').Trim() }
     }
-    if (-not $Tag) { Fail "could not resolve latest release from $Base - the repo is private or has no releases; use -FromDir or download assets via a browser (see README)" }
+    if (-not $Tag) { Fail "could not resolve latest release from $Base - check your connection and that a release exists (https://github.com/BuildTeamRYS/codegraph/releases); -FromDir installs from a local folder" }
     Say "  latest release: $Tag"
 }
 
@@ -226,7 +223,7 @@ try {
             $req = [System.Net.Http.HttpRequestMessage]::new([System.Net.Http.HttpMethod]::Get, "$Download/$Asset")
             $resp = $client.SendAsync($req, [System.Net.Http.HttpCompletionOption]::ResponseHeadersRead).GetAwaiter().GetResult()
             if (-not $resp.IsSuccessStatusCode) {
-                Fail "download failed ($([int]$resp.StatusCode) $($resp.ReasonPhrase)) - private repo? use -FromDir or a browser download (see README)"
+                Fail "download failed ($([int]$resp.StatusCode) $($resp.ReasonPhrase)) - check your connection and that a release exists (https://github.com/BuildTeamRYS/codegraph/releases); -FromDir installs from a local folder"
             }
             $total = [int64]($resp.Content.Headers.ContentLength | ForEach-Object { $_ })
             if (-not $total) { $total = 0 }
@@ -294,6 +291,9 @@ try {
 
     # --- 6. PATH ------------------------------------------------------------------
     Say "[6/6] PATH"
+    if ($SkipPath) {
+        Say "  -SkipPath: leaving $BinDir off PATH (add it yourself or re-run without -SkipPath)"
+    } else {
     $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
     if (($userPath -split ';') -contains $BinDir) {
         Say "  $BinDir is already on the User PATH"
@@ -313,6 +313,7 @@ try {
             Say "  not added. To add later, run:"
             Say "    [Environment]::SetEnvironmentVariable('Path', [Environment]::GetEnvironmentVariable('Path','User') + ';$BinDir', 'User')"
         }
+    }
     }
 
     Final-Summary
