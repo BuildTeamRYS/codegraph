@@ -1,0 +1,3 @@
+# Fixture files in this directory carry CRLF line endings on purpose.
+# Never let git normalize them.
+* -text

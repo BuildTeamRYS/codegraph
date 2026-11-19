@@ -1,0 +1,18 @@
+[
+  {
+    "imported_name": "clamp",
+    "kind": "named",
+    "line": 1,
+    "local_name": "clamp",
+    "path": "src/cli.js",
+    "source": "./math.mjs"
+  },
+  {
+    "imported_name": "padNum",
+    "kind": "named",
+    "line": 2,
+    "local_name": "padNum",
+    "path": "src/cli.js",
+    "source": "./format.cjs"
+  }
+]

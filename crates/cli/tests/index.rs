@@ -10,7 +10,8 @@ use std::fs;
 use std::path::Path;
 
 use codegraph_cli::index_repo;
-use codegraph_parse::{scan, FileOutcome};
+use codegraph_lang_ts::TsPlugin;
+use codegraph_parse::{scan, FileOutcome, LanguagePlugin};
 use codegraph_store::Store;
 
 fn copy_fixture(name: &str) -> tempfile::TempDir {
@@ -83,6 +84,24 @@ fn deleting_a_file_removes_its_rows() {
 }
 
 #[test]
+fn js_fixture_cross_module_calls_resolve() {
+    let repo = copy_fixture("js-tool");
+    let db = repo.path().join("test.db");
+    let store = Store::open(&db).unwrap();
+    let stats = index_repo(&store, repo.path()).unwrap();
+    assert_eq!(stats.files_scanned, 4);
+    // main → clamp (./math.mjs) and main → padNum (./format.cjs); the rest
+    // (Number, process.stdout.write, alert) are honestly left unresolved.
+    assert_eq!(stats.calls_resolved, 2);
+
+    let main = store.resolve_symbol("main").unwrap().remove(0);
+    let callees = store.callees(main.id).unwrap();
+    let names: Vec<&str> = callees.iter().map(|c| c.symbol.name.as_str()).collect();
+    assert!(names.contains(&"clamp"));
+    assert!(names.contains(&"padNum"));
+}
+
+#[test]
 fn broken_file_is_a_gap_not_silence() {
     let repo = copy_fixture("tiny-api");
     let db = repo.path().join("test.db");
@@ -104,7 +123,9 @@ fn broken_file_is_a_gap_not_silence() {
 fn scan_skips_unchanged_via_hash() {
     let repo = copy_fixture("web-shop");
     let existing: HashMap<String, (i64, String)> = HashMap::new();
-    let scan = scan(repo.path(), &existing).unwrap();
+    let plugin = TsPlugin::new();
+    let plugins: Vec<&dyn LanguagePlugin> = vec![&plugin];
+    let scan = scan(repo.path(), &existing, &plugins).unwrap();
     let parsed = scan
         .outcomes
         .iter()

@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     "crates/core",
     "crates/parse",
+    "crates/lang-ts",
     "crates/store",
     "crates/query",
     "crates/mcp",
@@ -10,13 +11,14 @@ members = [
 ]
 
 [workspace.package]
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 license = "PolyForm-Shield-1.0.0"
 
 [workspace.dependencies]
 codegraph-core = { path = "crates/core" }
 codegraph-parse = { path = "crates/parse" }
+codegraph-lang-ts = { path = "crates/lang-ts" }
 codegraph-store = { path = "crates/store" }
 codegraph-query = { path = "crates/query" }
 codegraph-mcp = { path = "crates/mcp" }

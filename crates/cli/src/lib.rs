@@ -5,7 +5,8 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 pub use codegraph_core::git_head_commit;
-use codegraph_parse::{scan, FileOutcome};
+use codegraph_lang_ts::TsPlugin;
+use codegraph_parse::{scan, FileOutcome, LanguagePlugin};
 use codegraph_store::{IndexStats, Store};
 
 /// Default index location: `<repo>/.codegraph/index.db` (gitignored).
@@ -27,7 +28,9 @@ fn now_rfc3339() -> String {
 pub fn index_repo(store: &Store, root: &Path) -> Result<IndexStats> {
     let mut stats = IndexStats::default();
     let existing = store.existing_files()?;
-    let scan = scan(root, &existing).context("failed to scan repository")?;
+    let plugin = TsPlugin::new();
+    let plugins: Vec<&dyn LanguagePlugin> = vec![&plugin];
+    let scan = scan(root, &existing, &plugins).context("failed to scan repository")?;
     stats.files_scanned = scan.scanned;
 
     for outcome in &scan.outcomes {

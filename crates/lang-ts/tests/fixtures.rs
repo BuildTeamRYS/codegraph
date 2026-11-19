@@ -4,8 +4,13 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use codegraph_parse::{scan, FileOutcome};
+use codegraph_lang_ts::TsPlugin;
+use codegraph_parse::{scan, FileOutcome, LanguagePlugin};
 use serde_json::Value;
+
+fn plugins() -> Vec<TsPlugin> {
+    vec![TsPlugin::new()]
+}
 
 fn fixture_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -16,7 +21,10 @@ fn fixture_root() -> PathBuf {
 
 fn dump_fixture(name: &str) -> (Value, Value) {
     let root = fixture_root().join(name);
-    let scan = scan(&root, &HashMap::new()).expect("scan fixture");
+    let owned = plugins();
+    let plugins: Vec<&dyn LanguagePlugin> =
+        owned.iter().map(|p| p as &dyn LanguagePlugin).collect();
+    let scan = scan(&root, &HashMap::new(), &plugins).expect("scan fixture");
     let mut symbols = Vec::new();
     let mut imports = Vec::new();
     for outcome in scan.outcomes {
@@ -64,4 +72,19 @@ fn cli_tool_symbols_match_expected() {
     let (symbols, imports) = dump_fixture("cli-tool");
     assert_eq!(symbols, expected("cli-tool", "expected.symbols.json"));
     assert_eq!(imports, expected("cli-tool", "expected.imports.json"));
+}
+
+#[test]
+fn js_tool_symbols_match_expected() {
+    let (symbols, imports) = dump_fixture("js-tool");
+    assert_eq!(symbols, expected("js-tool", "expected.symbols.json"));
+    assert_eq!(imports, expected("js-tool", "expected.imports.json"));
+}
+
+#[test]
+fn crlf_repo_symbols_match_expected() {
+    // CRLF line endings must not shift line numbers or drop symbols.
+    let (symbols, imports) = dump_fixture("crlf-repo");
+    assert_eq!(symbols, expected("crlf-repo", "expected.symbols.json"));
+    assert_eq!(imports, expected("crlf-repo", "expected.imports.json"));
 }

@@ -220,12 +220,13 @@ checksum = "e0921b3876b3a1df8a1c9f912e7f94342458022c2e84288015893d83c4d62a79"
 
 [[package]]
 name = "codegraph-cli"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "blake3",
  "clap",
  "codegraph-core",
+ "codegraph-lang-ts",
  "codegraph-mcp",
  "codegraph-parse",
  "codegraph-query",
@@ -236,21 +237,31 @@ dependencies = [
  "serde_json",
  "tempfile",
  "tokio",
- "tree-sitter",
- "tree-sitter-typescript",
 ]
 
 [[package]]
 name = "codegraph-core"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "blake3",
  "serde",
 ]
 
 [[package]]
+name = "codegraph-lang-ts"
+version = "0.2.0"
+dependencies = [
+ "codegraph-core",
+ "codegraph-parse",
+ "serde",
+ "serde_json",
+ "tree-sitter",
+ "tree-sitter-typescript",
+]
+
+[[package]]
 name = "codegraph-mcp"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "codegraph-core",
@@ -265,22 +276,17 @@ dependencies = [
 
 [[package]]
 name = "codegraph-parse"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
- "blake3",
  "codegraph-core",
  "ignore",
- "serde",
- "serde_json",
  "tempfile",
  "thiserror",
- "tree-sitter",
- "tree-sitter-typescript",
 ]
 
 [[package]]
 name = "codegraph-query"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "codegraph-core",
  "codegraph-store",
@@ -289,7 +295,7 @@ dependencies = [
 
 [[package]]
 name = "codegraph-store"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "codegraph-core",
  "rusqlite",

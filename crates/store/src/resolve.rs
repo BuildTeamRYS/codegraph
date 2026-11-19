@@ -49,7 +49,8 @@ fn normalize_join(dir: &str, source: &str) -> String {
 }
 
 fn module_candidates(base: &str) -> Vec<String> {
-    let exts = ["ts", "tsx", "mts", "cts"];
+    // TS/JS family extension probing order: TS types first, then JS, then index files.
+    let exts = ["ts", "tsx", "mts", "cts", "js", "jsx", "mjs", "cjs"];
     let mut out = Vec::new();
     if base.rsplit('/').next().is_some_and(|f| f.contains('.')) {
         out.push(base.to_string());

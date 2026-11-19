@@ -249,6 +249,19 @@ impl Store {
         Ok(v.parse().unwrap_or(0))
     }
 
+    /// Raw DDL of every table and index in the store (from sqlite_master).
+    /// Used by the schema-hygiene test that scans for language-specific
+    /// columns, and by `codegraph status` for diagnostics.
+    pub fn schema_ddl(&self) -> Result<Vec<String>, StoreError> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT sql FROM sqlite_master WHERE sql IS NOT NULL ORDER BY name")?;
+        let rows = stmt
+            .query_map([], |r| r.get::<_, String>(0))?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
     pub fn get_meta(&self, key: &str) -> Result<Option<String>, StoreError> {
         Ok(self
             .conn

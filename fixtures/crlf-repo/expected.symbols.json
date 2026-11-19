@@ -1,0 +1,22 @@
+[
+  {
+    "docstring": "Greet someone by name.",
+    "end_line": 6,
+    "kind": "function",
+    "name": "greet",
+    "path": "src/index.ts",
+    "qualified_name": "greet",
+    "signature": "(name) -> string",
+    "start_line": 4
+  },
+  {
+    "docstring": null,
+    "end_line": 10,
+    "kind": "function",
+    "name": "shout",
+    "path": "src/index.ts",
+    "qualified_name": "shout",
+    "signature": "(name) -> string",
+    "start_line": 8
+  }
+]

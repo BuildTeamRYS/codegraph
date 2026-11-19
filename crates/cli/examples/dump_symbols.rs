@@ -5,7 +5,9 @@ fn main() {
         .nth(1)
         .expect("usage: dump_symbols <repo-root>");
     let existing = std::collections::HashMap::new();
-    let scan = codegraph_parse::scan(Path::new(&root), &existing).expect("scan");
+    let plugin = codegraph_lang_ts::TsPlugin::new();
+    let plugins: Vec<&dyn codegraph_parse::LanguagePlugin> = vec![&plugin];
+    let scan = codegraph_parse::scan(Path::new(&root), &existing, &plugins).expect("scan");
     let mut symbols = Vec::new();
     let mut imports = Vec::new();
     for outcome in scan.outcomes {

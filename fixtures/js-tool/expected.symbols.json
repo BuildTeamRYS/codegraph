@@ -1,0 +1,52 @@
+[
+  {
+    "docstring": "Entry: read argv[2] as a level, clamp it to 1..5, print it zero-padded.",
+    "end_line": 11,
+    "kind": "function",
+    "name": "main",
+    "path": "src/cli.js",
+    "qualified_name": "main",
+    "signature": "(argv)",
+    "start_line": 7
+  },
+  {
+    "docstring": "Pad a number to at least `width` digits with leading zeros.",
+    "end_line": 6,
+    "kind": "function",
+    "name": "padNum",
+    "path": "src/format.cjs",
+    "qualified_name": "padNum",
+    "signature": "(n, width)",
+    "start_line": 4
+  },
+  {
+    "docstring": "Clamp `value` into the inclusive range [lo, hi].",
+    "end_line": 6,
+    "kind": "function",
+    "name": "clamp",
+    "path": "src/math.mjs",
+    "qualified_name": "clamp",
+    "signature": "(value, lo, hi)",
+    "start_line": 4
+  },
+  {
+    "docstring": null,
+    "end_line": 8,
+    "kind": "function",
+    "name": "clampFast",
+    "path": "src/math.mjs",
+    "qualified_name": "clampFast",
+    "signature": "(v, lo, hi)",
+    "start_line": 8
+  },
+  {
+    "docstring": "Tiny counter button component.",
+    "end_line": 6,
+    "kind": "function",
+    "name": "Counter",
+    "path": "src/widget.jsx",
+    "qualified_name": "Counter",
+    "signature": "({ label })",
+    "start_line": 4
+  }
+]

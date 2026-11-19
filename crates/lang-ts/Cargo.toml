@@ -1,0 +1,16 @@
+[package]
+name = "codegraph-lang-ts"
+description = "TypeScript/JavaScript LanguagePlugin for codegraph"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+codegraph-core.workspace = true
+codegraph-parse.workspace = true
+tree-sitter = "0.25"
+tree-sitter-typescript = "0.23"
+
+[dev-dependencies]
+serde_json.workspace = true
+serde.workspace = true
