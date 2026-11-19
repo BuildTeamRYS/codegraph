@@ -19,7 +19,7 @@ Phase 2.5 (universal agent support) — implemented and green; real-install veri
 
 ## What is broken or incomplete
 
-- Phase 0.5 cannot finish without a GitHub remote: pushing `main` + tagging `v0.2.0` is required to exercise release CI, real one-line installs, Gatekeeper and the Windows installer. Owner must decide (will ask).
+- Phase 0.5 needs one more thing from the owner: re-push the `v0.2.0` tag so CI republishes with the fixed Windows CRT gate and `+crt-static` builds; then verify the 9 assets on clean machines (curl one-liners; see README.md).
 - `install/install.ps1` untested (no Windows/pwsh here); runner labels `windows-11-arm` / `ubuntu-24.04-arm` assumed correct.
 - CommonJS `require()` calls are recorded as call sites but not mapped to import bindings (CJS interop deferred; ESM named/default/namespace resolve).
 - MCP `roots` NOT used: deprecated in protocol 2026-07-28 (SEP-2577). Repo resolution = `--project` > `$CODEGRAPH_PROJECT` > walk up from cwd to nearest `.git`.
@@ -33,7 +33,7 @@ Phase 2.5 (universal agent support) — implemented and green; real-install veri
 | Phase | Name | Status |
 |---|---|---|
 | 0 | Skeleton | PASS |
-| 0.5 | Distribution (CI builds, install scripts) | PARTIAL — implemented + locally verified; clean-machine/release-run proof pending GitHub remote + tag |
+| 0.5 | Distribution (CI builds, install scripts) | PARTIAL — main is green on all 3 OSes; the Windows CRT byte-scan gate (an invalid check) blocked the first release build; now replaced with a PE import-table check + `+crt-static` on Windows legs. Release publishes only after the owner re-tags `v0.2.0` and CI is green |
 | 1 | Parse and store | PASS |
 | 2 | MCP server, basic tools | PASS |
 | 2.5 | Universal agent support | PASS for the parts that need no foreign machines: conformance suite green, merge/restore/idempotency tests, doctor self-check, OpenCode + Claude Code verified on real installs. Tier 1 real-install checks for the other 7 agents pending (need installs; COMPAT.md has per-agent verification log) |

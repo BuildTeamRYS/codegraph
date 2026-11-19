@@ -22,7 +22,19 @@ bad()  { FAIL=$((FAIL + 1)); printf 'FAIL %s\n' "$1"; }
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT INT TERM
 
-ASSET="codegraph-x86_64-unknown-linux-musl"
+# Stage the real local binary under the asset name matching THIS host — the
+# installer detects platform/arch the same way, and the harness must mirror it.
+case "$(uname -s)" in
+    Darwin) PLATFORM="apple-darwin" ;;
+    Linux)  PLATFORM="unknown-linux-musl" ;;
+    *)      echo "unsupported test host: $(uname -s)" >&2; exit 2 ;;
+esac
+case "$(uname -m)" in
+    x86_64|amd64)  CPU="x86_64" ;;
+    arm64|aarch64) CPU="aarch64" ;;
+    *)             echo "unsupported test arch: $(uname -m)" >&2; exit 2 ;;
+esac
+ASSET="codegraph-$CPU-$PLATFORM"
 REAL_BINARY="${CODEGRAPH_TEST_BINARY:-}"
 if [ -z "$REAL_BINARY" ]; then
     for candidate in "$REPO_ROOT/target/release/codegraph" "$REPO_ROOT/target/debug/codegraph"; do
