@@ -112,5 +112,51 @@ else
     ok "unknown flag rejected"
 fi
 
+# --- 7. --from-dir installs from a local bundle ------------------------------------
+BUNDLE="$WORK/bundle"; mkdir -p "$BUNDLE"
+cp "$REAL_BINARY" "$BUNDLE/$ASSET"
+( cd "$BUNDLE" && {
+    if command -v sha256sum >/dev/null 2>&1; then sha256sum "$ASSET" > checksums.txt;
+    else shasum -a 256 "$ASSET" > checksums.txt; fi
+} )
+T="$WORK/t7"; mkdir -p "$T"
+OUT="$(CODEGRAPH_INSTALL_DIR="$T/cg" sh "$INSTALLER" --from-dir "$BUNDLE" 2>&1)" \
+    && FROM_DIR_OK=1 || FROM_DIR_OK=0
+if [ "$FROM_DIR_OK" = 1 ] && [ -x "$T/cg/bin/codegraph" ] && "$T/cg/bin/codegraph" --version >/dev/null 2>&1; then
+    ok "--from-dir bundle install works"
+    echo "$OUT" | grep -q "offline mode" && ok "--from-dir reports offline mode" || bad "--from-dir offline mode not reported"
+    echo "$OUT" | grep -q "SHA-256 verified" && ok "--from-dir verifies checksums.txt" || bad "--from-dir did not verify checksums.txt"
+else
+    bad "--from-dir bundle install: $OUT"
+fi
+
+# --- 7b. --from-dir with tampered checksum aborts -----------------------------------
+printf 'tampered' >> "$BUNDLE/$ASSET"
+T="$WORK/t7b"; mkdir -p "$T"
+if CODEGRAPH_INSTALL_DIR="$T/cg" sh "$INSTALLER" --from-dir "$BUNDLE" >/dev/null 2>&1; then
+    bad "--from-dir tampered checksum NOT rejected"
+else
+    [ ! -e "$T/cg/bin/codegraph" ] && ok "--from-dir tampered bundle aborts" || bad "--from-dir tampered install left a binary"
+fi
+cp "$REAL_BINARY" "$BUNDLE/$ASSET"
+( cd "$BUNDLE" && {
+    if command -v sha256sum >/dev/null 2>&1; then sha256sum "$ASSET" > checksums.txt;
+    else shasum -a 256 "$ASSET" > checksums.txt; fi
+} )
+
+# --- 7c. --from-dir without checksums.txt aborts unless --skip-checksum ------------
+mv "$BUNDLE/checksums.txt" "$BUNDLE/checksums.bak"
+T="$WORK/t7c"; mkdir -p "$T"
+if CODEGRAPH_INSTALL_DIR="$T/cg" sh "$INSTALLER" --from-dir "$BUNDLE" >/dev/null 2>&1; then
+    bad "--from-dir without checksums.txt accepted"
+else
+    ok "--from-dir without checksums.txt aborts"
+fi
+if CODEGRAPH_INSTALL_DIR="$T/cg2" sh "$INSTALLER" --from-dir "$BUNDLE" --skip-checksum >/dev/null 2>&1; then
+    ok "--from-dir --skip-checksum installs"
+else
+    bad "--from-dir --skip-checksum failed"
+fi
+
 printf '\ninstall.sh tests: %d passed, %d failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

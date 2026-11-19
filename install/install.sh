@@ -1,38 +1,45 @@
 #!/bin/sh
 # codegraph installer — macOS and Linux.
 #
-# One-liner:
-#   curl -fsSL https://github.com/ravijaanthony/codegraph/releases/latest/download/install.sh | sh
-#   (or the pinned one-liner from the README)
+# One-liner (public releases only):
+#   curl -fsSL https://github.com/BuildTeamRYS/codegraph/releases/latest/download/install.sh | sh
+#
+# IMPORTANT: this repository is private. Both remote install modes (latest
+# and --version) need a GitHub token, or a download from your logged-in
+# browser. For private/offline use, download the release assets manually
+# (browser) or use a pre-made bundle, then install with:
+#   sh install.sh --from-dir /path/to/assets
+# (see README.md "Install (private demo)").
 #
 # What it does, always printed as it happens:
 #   1. detects OS and CPU architecture
-#   2. resolves which release to install (--version, else latest)
-#   3. downloads the static musl binary + checksums.txt to a temp dir
+#   2. resolves which release to install (--version, --from-dir, else latest)
+#   3. downloads the static musl binary + checksums.txt (or finds them in DIR)
 #   4. verifies the SHA-256 — aborts on mismatch, installs nothing
 #   5. installs to ~/.codegraph/bin (or $CODEGRAPH_INSTALL_DIR) — no admin rights
-#   6. offers to add that directory to PATH (interactive; skipped when piped)
+#   6. offers to add that directory to PATH; prints exactly what went where
 #
 # Flags:
 #   --version X.Y.Z    install a specific version instead of latest
-#   --uninstall        remove ~/.codegraph (or $CODEGRAPH_INSTALL_DIR) entirely
+#   --from-dir DIR     install from a local folder of release assets (offline)
+#   --skip-checksum    from-dir only: install even without a checksums.txt
+#   --uninstall        remove ~/.codegraph (or $CODEGRAPH_INSTALL_DIR); prints
+#                      PATH line to delete and offers to undo agent configs
 #   --help             this help
 #
 # Environment overrides:
 #   CODEGRAPH_RELEASE_BASE   base URL of releases (for mirrors/tests)
 #   CODEGRAPH_INSTALL_DIR    install directory (default ~/.codegraph)
-#
-# Targets: <arch>-apple-darwin on macOS, <arch>-unknown-linux-musl on Linux
-# (static — runs on any Linux regardless of glibc). macOS binaries are
-# ad-hoc signed in CI (Apple Silicon refuses unsigned executables).
 
 set -eu
 
-BASE="${CODEGRAPH_RELEASE_BASE:-https://github.com/ravijaanthony/codegraph}"
+BASE="${CODEGRAPH_RELEASE_BASE:-https://github.com/BuildTeamRYS/codegraph}"
 INSTALL_ROOT="${CODEGRAPH_INSTALL_DIR:-$HOME/.codegraph}"
 BIN_DIR="$INSTALL_ROOT/bin"
 BIN_PATH="$BIN_DIR/codegraph"
 PINNED_VERSION=""
+FROM_DIR=""
+SKIP_CHECKSUM=0
 DO_UNINSTALL=0
 
 say() { printf '%s\n' "codegraph installer: $*"; }
@@ -40,10 +47,13 @@ fail() { printf '%s\n' "codegraph installer: ERROR: $*" >&2; exit 1; }
 
 usage() {
     cat <<'EOF'
-usage: install.sh [--version X.Y.Z] [--uninstall] [--help]
+usage: install.sh [--version X.Y.Z] [--from-dir DIR] [--skip-checksum] [--uninstall] [--help]
 
   --version X.Y.Z   install a specific version instead of latest
-  --uninstall       remove ~/.codegraph (or $CODEGRAPH_INSTALL_DIR)
+  --from-dir DIR    install from a local folder of release assets (offline mode)
+  --skip-checksum   from-dir only: install even without a checksums.txt
+  --uninstall       remove ~/.codegraph (or $CODEGRAPH_INSTALL_DIR), print the
+                    PATH line to delete, offer to undo agent configs
   --help            this help
 
 Environment:
@@ -57,29 +67,90 @@ while [ $# -gt 0 ]; do
     case "$1" in
         --version) [ $# -ge 2 ] || fail "--version needs a value"; PINNED_VERSION="$2"; shift 2 ;;
         --version=*) PINNED_VERSION="${1#*=}"; shift ;;
+        --from-dir) [ $# -ge 2 ] || fail "--from-dir needs a directory"; FROM_DIR="$2"; shift 2 ;;
+        --from-dir=*) FROM_DIR="${1#*=}"; shift ;;
+        --skip-checksum) SKIP_CHECKSUM=1; shift ;;
         --uninstall) DO_UNINSTALL=1; shift ;;
         --help|-h) usage ;;
         *) fail "unknown argument: $1 (try --help)" ;;
     esac
 done
 
+file_size() {
+    # bytes of a file (POSIX-ish; falls back to 0)
+    wc -c < "$1" 2>/dev/null | tr -d ' ' || printf 0
+}
+
+# --- summary helpers -----------------------------------------------------------
+final_summary() {
+    INSTALLED_VERSION="$("$BIN_PATH" --version 2>/dev/null | awk '{print $2}' || true)"
+    printf '\n'
+    say "done."
+    say "  installed (uninstall with this script --uninstall):"
+    say "    $BIN_PATH${INSTALLED_VERSION:+ (codegraph $INSTALLED_VERSION)}"
+    say "  agent configs created by 'codegraph init' point at this exact path"
+    say "  undo everything:"
+    say "    1) codegraph agents remove <id>   # per agent you configured (or 'codegraph agents list')"
+    say "    2) $0 --uninstall"
+    say "  try it: codegraph --version && codegraph index /path/to/repo"
+    say "  diagnose a setup: codegraph doctor"
+}
+
 if [ "$DO_UNINSTALL" = "1" ]; then
+    printf '\n'
+    say "[1/3] agent configs"
+    if [ -x "$BIN_PATH" ]; then
+        printf -- "--- codegraph agents list (current repo) ---\n"
+        "$BIN_PATH" agents list || true
+        if [ -t 0 ]; then
+            printf 'remove codegraph MCP entries from configured agents now? [y/N] '
+            read -r ANSWER || ANSWER=""
+            case "$ANSWER" in
+                y|Y|yes|YES)
+                    for id in claude-code cursor vscode-copilot codex-cli gemini-cli antigravity opencode windsurf claude-desktop; do
+                        "$BIN_PATH" agents remove "$id" || true
+                    done
+                    ;;
+                *) say "skipping agent removal — do it later with: codegraph agents remove <id>" ;;
+            esac
+        else
+            say "not a tty; leaving agent configs alone. Remove them with:"
+            say "  codegraph agents remove <id>   # claude-code | cursor | vscode-copilot | codex-cli | gemini-cli | antigravity | opencode | windsurf | claude-desktop"
+        fi
+    else
+        say "$BIN_PATH not present — nothing agent-side to do"
+    fi
+    printf '\n'
+    say "[2/3] remove install root"
     if [ -d "$INSTALL_ROOT" ]; then
         say "removing $INSTALL_ROOT"
         rm -rf "$INSTALL_ROOT"
-        say "done. If you added $BIN_DIR to PATH in your shell rc file, remove that line by hand."
+        say "removed."
     else
         say "nothing to uninstall ($INSTALL_ROOT does not exist)"
+    fi
+    printf '\n'
+    say "[3/3] PATH cleanup (if this directory is in a shell rc file)"
+    FOUND=0
+    for rc in "$HOME/.zshrc" "$HOME/.bashrc" "$HOME/.bash_profile" "$HOME/.profile" "$HOME/.config/fish/config.fish"; do
+        if [ -f "$rc" ] && grep -nF '.codegraph/bin' "$rc" 2>/dev/null; then
+            FOUND=1
+            say "  delete the line(s) above from $rc"
+        fi
+    done
+    if [ "$FOUND" = "0" ]; then
+        say "  $BIN_DIR is not referenced in common rc files — nothing to clean"
     fi
     exit 0
 fi
 
 # --- 1. OS and architecture ---------------------------------------------------
+say "[1/6] detecting platform"
 OS="$(uname -s)"
 ARCH="$(uname -m)"
 case "$OS" in
     Darwin) PLATFORM="apple-darwin" ;;
-    Linux)  PLATFORM="unknown-linux-musl" ;;   # static musl: runs everywhere
+    Linux)  PLATFORM="unknown-linux-musl" ;;   # static musl: runs everywhere incl. RPM-based distros
     *) fail "unsupported OS: $OS (Windows: use install.ps1)" ;;
 esac
 case "$ARCH" in
@@ -89,79 +160,117 @@ case "$ARCH" in
 esac
 TARGET="$CPU-$PLATFORM"
 ASSET="codegraph-$TARGET"
-say "detected $OS $ARCH -> target $TARGET"
+say "  $OS $ARCH -> target $TARGET (asset: $ASSET)"
 
 # --- 2. Which release ----------------------------------------------------------
-if [ -n "$PINNED_VERSION" ]; then
+say "[2/6] resolving release"
+if [ -n "$FROM_DIR" ]; then
+    [ -d "$FROM_DIR" ] || fail "--from-dir: not a directory: $FROM_DIR"
+    say "  offline mode: reading assets from $FROM_DIR"
+elif [ -n "$PINNED_VERSION" ]; then
     TAG="v${PINNED_VERSION#v}"
-    say "installing pinned version $TAG"
+    say "  pinned version -> tag $TAG"
 else
-    say "resolving latest release from $BASE"
-    # GitHub serves /releases/latest as a 302 to /releases/tag/<tag>.
-    # Do NOT follow it (-L would wipe redirect_url); we want the Location.
+    say "  resolving latest release from $BASE (private repos 404 here; use --from-dir or a browser download)"
     LOCATION="$(curl -fsSI -o /dev/null -w '%{redirect_url}' "$BASE/releases/latest" 2>/dev/null)" \
         || LOCATION="$(wget --spider -S "$BASE/releases/latest" 2>&1 | sed -n 's/^ *Location: //p' | tail -1 | tr -d '\r')" \
         || LOCATION=""
     case "$LOCATION" in
         *tag/*) TAG="${LOCATION##*/tag/}" ;;
-        *) fail "could not resolve latest release from $BASE (offline? no releases yet?)" ;;
+        *) fail "could not resolve latest release from $BASE — the repo is private or has no releases; use --from-dir or download assets via a browser (see README)" ;;
     esac
     TAG="$(printf '%s' "$TAG" | tr -d '\r')"
-    say "latest release is $TAG"
+    say "  latest release: $TAG"
 fi
 
-DOWNLOAD="$BASE/releases/download/$TAG"
-
-# --- 3+4. Download and verify ---------------------------------------------------
-TMPDIR_CG="$(mktemp -d 2>/dev/null || mktemp -d -t codegraph)" || fail "cannot create temp dir"
-case "$TMPDIR_CG" in
-    "") fail "mktemp failed" ;;
-esac
-# Quoted everywhere; mktemp output can contain spaces on some systems.
-TMP_BIN="$TMPDIR_CG/$ASSET"
-TMP_SUMS="$TMPDIR_CG/checksums.txt"
-trap 'rm -rf "$TMPDIR_CG"' EXIT INT TERM
-
-say "downloading $DOWNLOAD/$ASSET"
-curl -fsSL "$DOWNLOAD/$ASSET" -o "$TMP_BIN" || wget -q "$DOWNLOAD/$ASSET" -O "$TMP_BIN" \
-    || fail "download failed: $DOWNLOAD/$ASSET"
-say "downloading checksums.txt"
-curl -fsSL "$DOWNLOAD/checksums.txt" -o "$TMP_SUMS" || wget -q "$DOWNLOAD/checksums.txt" -O "$TMP_SUMS" \
-    || fail "download failed: $DOWNLOAD/checksums.txt"
-
-EXPECTED="$(grep -E "(^|[[:space:]])\*?$ASSET\$" "$TMP_SUMS" | awk '{print $1}' | head -1)"
-[ -n "$EXPECTED" ] || fail "checksums.txt has no entry for $ASSET — aborting, nothing was installed"
-if command -v sha256sum >/dev/null 2>&1; then
-    ACTUAL="$(sha256sum "$TMP_BIN" | awk '{print $1}')"
-elif command -v shasum >/dev/null 2>&1; then
-    ACTUAL="$(shasum -a 256 "$TMP_BIN" | awk '{print $1}')"
-elif command -v openssl >/dev/null 2>&1; then
-    ACTUAL="$(openssl dgst -sha256 "$TMP_BIN" | awk '{print $NF}')"
+if [ -n "$FROM_DIR" ]; then
+    SRC_BIN="$FROM_DIR/$ASSET"
+    SRC_SUMS="$FROM_DIR/checksums.txt"
+    [ -f "$SRC_BIN" ] || fail "--from-dir: missing asset $SRC_BIN"
+    say "  found binary: $SRC_BIN ($(file_size "$SRC_BIN") bytes)"
+    if [ -f "$SRC_SUMS" ]; then
+        say "  found checksums.txt — verifying"
+    elif [ "$SKIP_CHECKSUM" = "1" ]; then
+        say "  no checksums.txt present and --skip-checksum given — installing unverified"
+    else
+        fail "--from-dir: no checksums.txt in $FROM_DIR (pass --skip-checksum to install anyway)"
+    fi
+    TMPDIR_CG="$(mktemp -d 2>/dev/null || mktemp -d -t codegraph)" || fail "mktemp failed"
+    trap 'rm -rf "$TMPDIR_CG"' EXIT INT TERM
+    TMP_BIN="$TMPDIR_CG/$ASSET"
+    cp "$SRC_BIN" "$TMP_BIN" || fail "cannot stage $SRC_BIN"
+    if [ -f "$SRC_SUMS" ]; then
+        cp "$SRC_SUMS" "$TMPDIR_CG/checksums.txt" || fail "cannot stage checksums.txt"
+    fi
+    say "[3/6] staged (offline) — no network used"
+    DOWNLOAD_FROM="$SRC_BIN (offline)"
 else
-    fail "no SHA-256 tool found (sha256sum, shasum or openssl) — refusing to install an unverified binary"
+    DOWNLOAD="$BASE/releases/download/$TAG"
+    TMPDIR_CG="$(mktemp -d 2>/dev/null || mktemp -d -t codegraph)" || fail "cannot create temp dir"
+    case "$TMPDIR_CG" in
+        "") fail "mktemp failed" ;;
+    esac
+    TMP_BIN="$TMPDIR_CG/$ASSET"
+    TMP_SUMS="$TMPDIR_CG/checksums.txt"
+    trap 'rm -rf "$TMPDIR_CG"' EXIT INT TERM
+
+    say "[3/6] downloading"
+    say "  $DOWNLOAD/$ASSET"
+    T0="$(date +%s)"
+    curl -fL --progress-bar "$DOWNLOAD/$ASSET" -o "$TMP_BIN" || wget --progress=bar:force "$DOWNLOAD/$ASSET" -O "$TMP_BIN" \
+        || fail "download failed: $DOWNLOAD/$ASSET"
+    T1="$(date +%s)"
+    say "  downloaded $(file_size "$TMP_BIN") bytes in $((T1 - T0))s"
+    say "  downloading checksums.txt"
+    curl -fsSL "$DOWNLOAD/checksums.txt" -o "$TMP_SUMS" || wget -q "$DOWNLOAD/checksums.txt" -O "$TMP_SUMS" \
+        || fail "download failed: $DOWNLOAD/checksums.txt"
+    DOWNLOAD_FROM="$DOWNLOAD ($TAG)"
 fi
-EXPECTED="$(printf '%s' "$EXPECTED" | tr 'A-F' 'a-f')"
-ACTUAL="$(printf '%s' "$ACTUAL" | tr 'A-F' 'a-f')"
-if [ "$ACTUAL" != "$EXPECTED" ]; then
-    fail "checksum mismatch for $ASSET (expected $EXPECTED, got $ACTUAL) — refusing to install; nothing was installed"
+
+# --- 4. Verify ------------------------------------------------------------------
+say "[4/6] verifying SHA-256"
+SRC_SUMS="${TMPDIR_CG}/checksums.txt"
+EXPECTED="$(grep -E "(^|[[:space:]])\*?$(basename "$TMP_BIN")\$" "$SRC_SUMS" 2>/dev/null | awk '{print $1}' | head -1)"
+if [ -z "$EXPECTED" ]; then
+    if [ -n "$FROM_DIR" ] && [ "$SKIP_CHECKSUM" = "1" ]; then
+        say "  no checksum entry — skipping verification (--skip-checksum)"
+        EXPECTED=""
+    else
+        fail "checksums.txt has no entry for $ASSET — aborting, nothing was installed"
+    fi
 fi
-say "SHA-256 verified ($ACTUAL)"
+if [ -n "$EXPECTED" ]; then
+    if command -v sha256sum >/dev/null 2>&1; then
+        ACTUAL="$(sha256sum "$TMP_BIN" | awk '{print $1}')"
+    elif command -v shasum >/dev/null 2>&1; then
+        ACTUAL="$(shasum -a 256 "$TMP_BIN" | awk '{print $1}')"
+    elif command -v openssl >/dev/null 2>&1; then
+        ACTUAL="$(openssl dgst -sha256 "$TMP_BIN" | awk '{print $NF}')"
+    else
+        fail "no SHA-256 tool found (sha256sum, shasum or openssl) — refusing to install an unverified binary"
+    fi
+    EXPECTED="$(printf '%s' "$EXPECTED" | tr 'A-F' 'a-f')"
+    ACTUAL="$(printf '%s' "$ACTUAL" | tr 'A-F' 'a-f')"
+    if [ "$ACTUAL" != "$EXPECTED" ]; then
+        fail "checksum mismatch for $ASSET (expected $EXPECTED, got $ACTUAL) — refusing to install; nothing was installed"
+    fi
+    say "  SHA-256 verified ($ACTUAL)"
+fi
 
 # --- 5. Install -------------------------------------------------------------------
-say "installing to $BIN_DIR"
+say "[5/6] installing"
 [ -d "$BIN_DIR" ] || mkdir -p "$BIN_DIR" || fail "cannot create $BIN_DIR"
-# Copy to a temp name in the same dir, then rename: atomic on POSIX.
 cp "$TMP_BIN" "$BIN_PATH.new" || fail "cannot write $BIN_PATH.new"
 chmod 0755 "$BIN_PATH.new" || fail "cannot chmod $BIN_PATH.new"
 mv "$BIN_PATH.new" "$BIN_PATH" || fail "cannot move $BIN_PATH.new into place"
-say "installed $BIN_PATH"
+say "  installed $BIN_PATH (static musl/darwin — no system dependencies)"
+say "  source: $DOWNLOAD_FROM"
 
 # --- 6. PATH ---------------------------------------------------------------------
+say "[6/6] PATH"
 case ":$PATH:" in
-    *":$BIN_DIR:"*) say "$BIN_DIR is already on PATH" ;;
+    *":$BIN_DIR:"*) say "  $BIN_DIR is already on PATH" ;;
     *)
-        # Only touch an rc file with explicit confirmation; when the script
-        # is piped (no tty on stdin), just print instructions.
         RC=""
         case "${SHELL:-}" in
             */zsh)  RC="$HOME/.zshrc" ;;
@@ -169,7 +278,7 @@ case ":$PATH:" in
             */fish) RC="$HOME/.config/fish/config.fish" ;;
         esac
         if [ -t 0 ] && [ -n "$RC" ]; then
-            printf 'codegraph installer: add %s to PATH in %s now? [y/N] ' "$BIN_DIR" "$RC"
+            printf 'add %s to PATH in %s now? [y/N] ' "$BIN_DIR" "$RC"
             read -r ANSWER || ANSWER=""
             case "$ANSWER" in
                 y|Y|yes|YES)
@@ -178,15 +287,14 @@ case ":$PATH:" in
                     else
                         printf '\nexport PATH="%s:$PATH"\n' "$BIN_DIR" >> "$RC"
                     fi
-                    say "added to PATH in $RC — restart your shell or: export PATH=\"$BIN_DIR:\$PATH\""
+                    say "  added to PATH in $RC — restart your shell or: export PATH=\"$BIN_DIR:\$PATH\""
                     ;;
-                *) say "skipped. Add this to your shell rc by hand: export PATH=\"$BIN_DIR:\$PATH\"" ;;
+                *) say "  skipped. Add this to your shell rc by hand: export PATH=\"$BIN_DIR:\$PATH\"" ;;
             esac
         else
-            say "$BIN_DIR is not on PATH. Add this to your shell rc (e.g. ~/.zshrc):"
-            say "  export PATH=\"$BIN_DIR:\$PATH\""
+            say "  $BIN_DIR is not on PATH. Add this to your shell rc (e.g. ~/.zshrc):"
+            say "    export PATH=\"$BIN_DIR:\$PATH\""
         fi
         ;;
 esac
-
-say "done. Try: codegraph --version && codegraph index /path/to/repo"
+final_summary

@@ -250,7 +250,7 @@ pub fn init(opts: &InitOptions) -> Result<InitReport> {
                 .collect::<Vec<_>>()
                 .join(", ")
         );
-        println!("see docs: https://github.com/ravijaanthony/codegraph#connect-your-coding-agent");
+        println!("see docs: https://github.com/BuildTeamRYS/codegraph#connect-your-coding-agent");
         return Ok(InitReport {
             already: Vec::new(),
             written: Vec::new(),
@@ -454,10 +454,12 @@ pub fn agents_list(scope: Option<Scope>, path: Option<&Path>) -> Result<()> {
                 .unwrap_or_else(|| "-".into());
             let detected = if st.detected { "detected" } else { "-" };
             let configured = if st.configured { "configured" } else { "-" };
-            let valid = if st.config_valid {
-                ""
-            } else {
+            // "does not parse" only when the file exists but is broken —
+            // a missing file is just "not set up", not an error worth alarming.
+            let valid = if st.config_exists && !st.config_valid {
                 " (config does not parse!)"
+            } else {
+                ""
             };
             let inst = st
                 .instructions
@@ -477,7 +479,7 @@ pub fn agents_list(scope: Option<Scope>, path: Option<&Path>) -> Result<()> {
         }
         println!();
     }
-    println!("setup: codegraph init [--agent <id>] [--scope project|user]; docs: https://github.com/ravijaanthony/codegraph");
+    println!("setup: codegraph init [--agent <id>] [--scope project|user]; docs: https://github.com/BuildTeamRYS/codegraph");
     Ok(())
 }
 

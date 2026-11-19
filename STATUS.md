@@ -62,11 +62,11 @@ Where codegraph failed or wasted tokens when used on its own repo:
 
 1. Phase 2.6: query log, `status`/`stats`/`doctor` polish, post-install guidance, generated per-agent docs + README table from the adapter table, architecture.mmd/SVG sync (CI `mmdc` drift check).
 2. Or Phase 3 first (file watcher + git-diff incremental re-index + property test; dogfooding proper). The plan's task list does 2.6 first (task 4) then 3.
-3. Owner action to finish Phase 0.5: GitHub remote + tag `v0.2.0`; then install one-liners on clean Windows/macOS/Linux machines.
+3. **Awaiting owner: switch to release mode** — delete the manual `0.2.0` tag/release, push `v0.2.0` to fire CI (cross-compiled Linux ARM64, best-effort Windows ARM64 with install.ps1 x86_64 fallback, exactly the 9 public assets). Then verify on clean machines per Option 1/4 in README.md.
 
 ## Open questions for the owner
 
-1. GitHub remote: repo is local-only. Create it + push + tag `v0.2.0` to finish Phase 0.5? (Will not push without a go-ahead.)
-2. `.mcp.json`, `AGENTS.md`, `CLAUDE.md` created in this repo by the 2026-11-19 verification runs (OpenCode + Claude Code). Keep or remove? Keeping is consistent with `opencode.json` (already tracked).
-3. Release base URL defaults to `https://github.com/ravijaanthony/codegraph` — correct?
-4. LICENSE copyright line still says "ravijaanthony" (git handle) — confirm or correct before any public release.
+1. LICENSE copyright line still says "ravijaanthony" (git handle) — confirm or correct before any public release.
+2. Release base URL now points at `github.com/BuildTeamRYS/codegraph` (the actual remote). Confirm this stays the permanent org.
+3. Windows-ARM64 asset will be present only if the ARM64 MSVC toolset exists on the free `windows-latest` runner; otherwise install.ps1 transparently falls back to the x86_64 binary (Windows emulates it). Acceptable?
+4. RPM-based Linux (Fedora/RHEL/openSUSE) support comes from the static musl binary + `install.sh` — no `.rpm` packages at this stage. Confirm packaging stays deferred (Phase 12).

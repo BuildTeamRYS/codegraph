@@ -20,7 +20,7 @@ use anyhow::{bail, Context, Result};
 use sha2::{Digest, Sha256};
 
 /// Default release location. Overridable via `CODEGRAPH_RELEASE_BASE`.
-pub const RELEASES_BASE: &str = "https://github.com/ravijaanthony/codegraph";
+pub const RELEASES_BASE: &str = "https://github.com/BuildTeamRYS/codegraph";
 pub const ENV_BASE: &str = "CODEGRAPH_RELEASE_BASE";
 
 pub fn releases_base() -> String {

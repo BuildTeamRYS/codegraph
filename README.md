@@ -63,21 +63,92 @@ If your viewer does not render Mermaid, see [docs/architecture.svg](docs/archite
 
 ## Install
 
-One command. No Node, npm, Python or Rust needed. It installs a single binary into your user folder and needs no admin rights.
+This repository is **private**, so an anonymous one-liner download cannot work (a browser session won't authenticate a plain `curl`). Two supported ways to install for the demo, plus one for later:
 
-macOS and Linux:
+### Option 1 — Browser download (works today, no scripts needed)
+
+1. Open `https://github.com/BuildTeamRYS/codegraph/releases` in your logged-in browser.
+2. Download the one asset for your machine, plus `checksums.txt`:
+
+   | Machine | Asset |
+   |---|---|
+   | Linux x86_64 (Debian/Ubuntu/Fedora/RHEL/…) | `codegraph-x86_64-unknown-linux-musl` |
+   | Linux ARM64 (e.g. Pi 4/5) | `codegraph-aarch64-unknown-linux-musl` |
+   | macOS Intel | `codegraph-x86_64-apple-darwin` |
+   | macOS Apple Silicon | `codegraph-aarch64-apple-darwin` |
+   | Windows x86_64 | `codegraph-x86_64-pc-windows-msvc.exe` |
+   | Windows on ARM | `codegraph-aarch64-pc-windows-msvc.exe` (if present), or the x86_64 asset — Windows emulates it |
+
+3. Verify the checksum (optional but recommended): compare your file against the matching line in `checksums.txt` (`shasum -a 256 ./codegraph-…` on macOS, `sha256sum ./codegraph-…` on Linux, `Get-FileHash .\codegraph-… -Algorithm SHA256` on Windows).
+4. Install it:
+
+   **Linux:**
+   ```sh
+   chmod +x codegraph-x86_64-unknown-linux-musl
+   ./codegraph-x86_64-unknown-linux-musl --version
+   ./codegraph-x86_64-unknown-linux-musl init    # configures your coding agents for this repo
+   ```
+   **macOS:** the browser marks the download quarantined. First run fails with "Apple cannot check it…" — either right-click → Open once, or:
+   ```sh
+   chmod +x codegraph-aarch64-apple-darwin
+   xattr -d com.apple.quarantine ./codegraph-aarch64-apple-darwin
+   ./codegraph-aarch64-apple-darwin --version
+   ./codegraph-aarch64-apple-darwin init
+   ```
+   **Windows:** the browser attaches Mark-of-the-Web. If SmartScreen prompts "Windows protected your PC": **More info → Run anyway**, then:
+   ```powershell
+   .\codegraph-x86_64-pc-windows-msvc.exe --version
+   .\codegraph-x86_64-pc-windows-msvc.exe init
+   ```
+
+### Option 4 — Offline bundle (no network: pre-made zip, installs from a folder)
+
+**For the demo organizer** — make one zip per OS you need (targets from the table above):
+```sh
+mkdir -p codegraph-demo && cd codegraph-demo
+# copy the four assets + install.sh + install.ps1 + checksums.txt from the release page into this folder
+zip codegraph-demo-linux-x64.zip codegraph-x86_64-unknown-linux-musl install.sh checksums.txt
+zip codegraph-demo-macos-arm64.zip codegraph-aarch64-apple-darwin install.sh checksums.txt
+Compress-Archive -Path codegraph-x86_64-pc-windows-msvc.exe, install.ps1, checksums.txt -DestinationPath codegraph-demo-windows-x64.zip
+```
+Hand the zip out however you already share files (Teams/Slack/email/internal share).
+
+**For attendees** — unzip, then:
+```sh
+# macOS / Linux
+./install.sh --from-dir .
+# Windows
+powershell -ExecutionPolicy Bypass -File .\install.ps1 -FromDir .
+```
+The installer prints each step (detect → stage → verify → install → PATH), verifies `checksums.txt` (aborts on mismatch), and installs to `~/.codegraph/bin` (or `%LOCALAPPDATA%\codegraph\bin`). No network access is used at any point. Undo with `--uninstall` / `-Uninstall`.
+
+### Later (once the repo is public or internal)
+
+With anonymous access, the classic one-liners work again:
+```sh
+# macOS / Linux
+curl -fsSL https://github.com/BuildTeamRYS/codegraph/releases/latest/download/install.sh | sh
+```
+```powershell
+# Windows (PowerShell)
+irm https://github.com/BuildTeamRYS/codegraph/releases/latest/download/install.ps1 | iex
+```
+The installer prints a step-by-step log (`[1/6] detect → [6/6] PATH`) with sizes and ETA, verifies the SHA-256, and supports `--uninstall` (which also removes the PATH line hint and offers to undo agent configs). The scripts are in [`install/`](install/). Linux binaries are static musl — they run unchanged on **every distro, including RPM-based ones** (Fedora, RHEL, openSUSE), with no system dependencies.
+
+### Build from source (fallback; needs Rust)
 
 ```sh
-curl -fsSL https://<your-domain>/install.sh | sh
+cargo build --release
+# then point your agent at target/release/codegraph, or run `codegraph init` from the build directory
 ```
 
-Windows (PowerShell):
+### Verify the install
 
-```powershell
-irm https://<your-domain>/install.ps1 | iex
+After install:
+```sh
+codegraph --version
+codegraph doctor        # checks the agent configs you created with `codegraph init`
 ```
-
-You can read the scripts first: they live in [`install/`](install/). The installer verifies a SHA-256 checksum, prints what it does, and supports `--uninstall`.
 
 ## Connect your coding agent
 

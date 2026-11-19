@@ -1,8 +1,19 @@
 name: release
 
-# Builds the prebuilt binaries for every supported platform and publishes
-# them, with SHA-256 checksums, as a GitHub Release when a v* tag is pushed.
-# install.sh / install.ps1 download from that release.
+# Builds the prebuilt binaries and publishes them, with SHA-256 checksums, as
+# a GitHub Release when a v* tag is pushed. install.sh / install.ps1 download
+# from that release.
+#
+# Free-tier reality: no ARM hosted runners on a private org, so the two
+# aarch64 targets are produced on x86_64 runners (Linux aarch64 via `cross`,
+# Windows aarch64 best-effort — the job may fail without blocking the
+# release; install.ps1 falls back to the x86_64 binary on ARM64 Windows,
+# which Windows emulates natively). Linux stays static musl so it runs on
+# every distro incl. RPM-based ones. Release assets are exactly:
+#   6 binaries + install.sh + install.ps1 + checksums.txt
+# (Windows ARM64 may legitimately be missing when the ARM64 MSVC toolset is
+# unavailable — the asset simply isn't uploaded; checksums.txt covers what
+# was built.)
 on:
   push:
     tags: ['v*']
@@ -17,11 +28,11 @@ jobs:
       matrix:
         include:
           - { name: linux-x86_64-musl,   os: ubuntu-latest,   target: x86_64-unknown-linux-musl }
-          - { name: linux-aarch64-musl, os: ubuntu-24.04-arm, target: aarch64-unknown-linux-musl }
-          - { name: macos-x86_64,        os: macos-13,         target: x86_64-apple-darwin }
-          - { name: macos-aarch64,       os: macos-latest,     target: aarch64-apple-darwin }
-          - { name: windows-x86_64,      os: windows-latest,   target: x86_64-pc-windows-msvc }
-          - { name: windows-aarch64,     os: windows-11-arm,   target: aarch64-pc-windows-msvc }
+          - { name: linux-aarch64-musl,  os: ubuntu-latest,   target: aarch64-unknown-linux-musl, cross: true }
+          - { name: macos-x86_64,        os: macos-13,        target: x86_64-apple-darwin }
+          - { name: macos-aarch64,       os: macos-latest,    target: aarch64-apple-darwin }
+          - { name: windows-x86_64,      os: windows-latest,  target: x86_64-pc-windows-msvc }
+          - { name: windows-aarch64,     os: windows-latest,  target: aarch64-pc-windows-msvc, experimental: true }
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -29,20 +40,48 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
-      - name: Install musl toolchain (Linux only)
-        if: contains(matrix.target, 'musl')
+      # Experimental leg: build against the MSVC ARM64 toolset if it is
+      # present (it usually is on windows-latest). Never fails the workflow.
+      - name: Build experimental aarch64-pc-windows-msvc (best effort)
+        if: "matrix.experimental"
+        id: exp_build
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          rustup target add aarch64-pc-windows-msvc
+          cargo build --release --locked --target aarch64-pc-windows-msvc
+          if ($LASTEXITCODE -ne 0) { Write-Host "windows-aarch64 build failed; asset will be omitted and install.ps1 will fall back to x86_64"; exit 1 }
+
+      - name: Install musl toolchain (Linux x86_64 musl)
+        if: "contains(matrix.target, 'musl') && !matrix.cross"
         run: sudo apt-get update && sudo apt-get install -y musl-tools
 
-      - name: Build release binary
+      - name: Install cross (Linux aarch64 musl)
+        if: "matrix.cross"
+        run: cargo install cross --locked
+
+      - name: Build release binary (stable)
+        if: "!matrix.cross && !matrix.experimental"
         run: cargo build --release --locked --target ${{ matrix.target }}
+
+      - name: Build release binary (cross, Linux aarch64 musl)
+        if: "matrix.cross"
+        run: cross build --release --locked --target ${{ matrix.target }}
 
       - name: Prepare asset
         shell: bash
+        if: always()
         run: |
           mkdir -p dist
           ext=""
           case "${{ matrix.target }}" in *windows*) ext=".exe";; esac
-          cp "target/${{ matrix.target }}/release/codegraph${ext}" "dist/codegraph-${{ matrix.target }}${ext}"
+          src="target/${{ matrix.target }}/release/codegraph${ext}"
+          if [ -f "$src" ]; then
+            cp "$src" "dist/codegraph-${{ matrix.target }}${ext}"
+            echo "asset prepared: dist/codegraph-${{ matrix.target }}${ext}"
+          else
+            echo "::warning::asset $src missing after build (experimental leg?) — releasing without it"
+          fi
 
       - name: Ad-hoc sign (macOS only; Apple Silicon refuses unsigned binaries)
         if: contains(matrix.target, 'apple-darwin')
@@ -50,17 +89,33 @@ jobs:
           codesign --force --sign - "dist/codegraph-${{ matrix.target }}"
           codesign --verify --verbose "dist/codegraph-${{ matrix.target }}"
 
-      - name: Verify dynamic dependencies are OS-provided (Linux)
-        if: contains(matrix.target, 'musl')
+      - name: Verify dynamic dependencies are OS-provided (Linux x86_64 musl)
+        if: matrix.target == 'x86_64-unknown-linux-musl'
         shell: bash
         run: |
           file "dist/codegraph-${{ matrix.target }}"
           out="$(ldd "dist/codegraph-${{ matrix.target }}" 2>&1 || true)"
           echo "$out"
-          # Allowlist: OS-provided libc/libm/libdl/libpthread/libgcc_s. Anything
-          # else (OpenSSL, sqlite, libstdc++...) fails the release.
           if echo "$out" | grep -E "/\S+\.so\S*" | grep -vE "linux-vdso|libc\.musl|ld-musl|libc\.so\.6|libm\.so\.6|libdl\.so\.2|libpthread\.so\.0|libgcc_s\.so\.1" | grep .; then
             echo "unexpected non-OS-provided library linked" >&2; exit 1
+          fi
+          echo "dynamic dependency check passed"
+
+      - name: Verify dynamic dependencies are OS-provided (Linux aarch64 musl, foreign arch)
+        if: matrix.target == 'aarch64-unknown-linux-musl'
+        shell: bash
+        run: |
+          file "dist/codegraph-${{ matrix.target }}"
+          sudo apt-get update && sudo apt-get install -y binutils
+          out="$(readelf -d "dist/codegraph-${{ matrix.target }}" 2>&1 || true)"
+          echo "$out"
+          # Static musl binaries carry no DT_NEEDED entries; any NEEDED that
+          # appears must be OS-provided musl or startup helpers.
+          needed="$(printf '%s\n' "$out" | grep -oE 'Shared library: \[[^]]+\]' | sed -E 's/Shared library: \[\([^]]*)\]/\1/' || true)"
+          echo "NEEDED entries: ${needed:-none}"
+          bad="$(printf '%s\n' "$needed" | grep -vE '^(libc\.musl-aarch64\.so\.1|ld-musl-aarch64\.so\.1|libgcc_s\.so\.1|libm\.so\.6|libdl\.so\.2|libpthread\.so\.0)$' || true)"
+          if [ -n "$bad" ]; then
+            echo "unexpected non-OS-provided libraries: $bad" >&2; exit 1
           fi
           echo "dynamic dependency check passed"
 
@@ -77,11 +132,8 @@ jobs:
         if: contains(matrix.target, 'windows')
         shell: pwsh
         run: |
-          # PE import tables store DLL names as plain ASCII; if a CRT import
-          # existed, the string VCRUNTIME140.dll / MSVCP140.dll would be in the
-          # binary. Rust's MSVC target statically links the C/C++ runtime, so
-          # these must never appear. (heuristic, but exact for this purpose)
           $bin = "dist/codegraph-${{ matrix.target }}.exe"
+          if (-not (Test-Path $bin)) { Write-Output "asset not built (experimental leg); skipping"; exit 0 }
           $bytes = [System.IO.File]::ReadAllBytes($bin)
           $text = [System.Text.Encoding]::ASCII.GetString($bytes)
           $bad = @('VCRUNTIME140.dll', 'VCRUNTIME140_1.dll', 'MSVCP140.dll', 'CONCRT140.dll') | Where-Object { $text.Contains($_) }
@@ -96,7 +148,7 @@ jobs:
         with:
           name: codegraph-${{ matrix.target }}
           path: dist/codegraph-${{ matrix.target }}*
-          if-no-files-found: error
+          if-no-files-found: ignore
 
   release:
     needs: build
@@ -109,11 +161,10 @@ jobs:
           path: dist
           merge-multiple: true
 
-      - name: Copy license and installers alongside the binaries
+      - name: Copy installers alongside the binaries
         run: |
           cp install/install.sh dist/install.sh
           cp install/install.ps1 dist/install.ps1
-          cp LICENSE dist/LICENSE
           chmod 0755 dist/install.sh
 
       - name: Generate checksums.txt (sha256, sha256sum format)
