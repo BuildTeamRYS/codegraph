@@ -1,0 +1,42 @@
+flowchart LR
+  subgraph INPUTS["Inputs"]
+    A1["Source files"]
+    A2["Git history"]
+    A3["Tests and coverage"]
+    A4["Optional analyzers<br/>type checker, linter, Semgrep"]
+  end
+
+  subgraph IDX["Indexer (one Rust binary)"]
+    B1["Parse<br/>tree-sitter + LanguagePlugin"]
+    B2["Resolve<br/>native resolver<br/>(tsserver or SCIP if present)"]
+    B3["Derive facts<br/>side effects, entry points"]
+    B4["Enrich<br/>churn, co-change, test links"]
+  end
+
+  C[("Knowledge base<br/>SQLite in .codegraph/<br/>symbols, edges, facts,<br/>findings, verdicts")]
+  U["Updater<br/>watcher + git diff<br/>incremental re-index"]
+
+  subgraph Q["Query layer"]
+    D3["Rank + token budget"]
+    D1["MCP server (stdio)"]
+    D2["CLI: codegraph query"]
+  end
+
+  AG["Any MCP-capable coding agent<br/>Claude Code, Cursor, Codex CLI, Gemini CLI,<br/>Antigravity, OpenCode, Windsurf, ..."]
+  L["Query log<br/>status, doctor, stats, later UI"]
+  S["codegraph init<br/>writes agent config + instructions"]
+
+  A1 --> B1 --> B2 --> B3 --> C
+  A2 --> B4
+  A3 --> B4
+  B4 --> C
+  A4 --> C
+  U --> B1
+  U -. "expires stale verdicts" .-> C
+  C --> D3
+  D3 --> D1
+  D3 --> D2
+  D1 <--> AG
+  D2 --> AG
+  D1 --> L
+  S -. "sets up" .-> AG

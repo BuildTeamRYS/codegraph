@@ -2,36 +2,42 @@
 
 The agent rewrites this file at the end of every session so a fresh session can resume from it.
 
+Note: the 2026-11-19 owner edit of the planning docs reset this file to "nothing built"; the code on disk (and git history before the reset) showed phases 0, 1, 2 as complete. This file now reflects reality again, and keeps the new phase structure (2.5 / 2.6 / 13).
+
 ## Current phase
 
-Phases 0, 1, 2 code-complete and green (see below); **Phase 0.5 (distribution) implemented and locally verified; pending proof on clean machines, which needs a GitHub remote + release tag push**. Next: Phase 3 (incremental updates) — dogfooding starts there.
-
-Note: the working-tree edit that reset this file (2026-11-19) discarded the previous status log; the real history is in git (`git log`, and `git show HEAD:STATUS.md` before the reset). This file was rewritten 2026-11-19 to reflect reality.
+Phase 2.5 (universal agent support) — implemented and green; real-install verification done for OpenCode and Claude Code; the rest of Tier 1 needs a real install each. Next: Phase 2.6 (observability: query log, status/stats/doctor polish, generated per-agent docs) or Phase 3 (incremental updates). Phase 0.5 remains blocked on a GitHub remote + release tag.
 
 ## What works
 
 - Phase 0: cargo workspace, CI (fmt+clippy+test on ubuntu/macos/windows; test matrix + install-script harness).
-- Phase 1: TypeScript/JavaScript plugin behind the `LanguagePlugin` trait (`crates/parse` = trait + walker, `crates/lang-ts` = TS/JS plugin). `.ts/.tsx/.mts/.cts/.js/.jsx/.mjs/.cjs`. Fixtures: `tiny-api`, `web-shop`, `cli-tool`, `js-tool` (hand-verified expected JSON), `crlf-repo` (CRLF pinned via `.gitattributes`). No-op re-index = 0 parses. Synthetic 100k-LOC TS repo (3449 files, 17245 symbols): full index **~1.0s**, no-op re-index **0.05s** (acceptance: <2 min). Kapruka (53.8k LOC real repo) was <1s in an earlier session. Schema TS-scan test passes. **All Phase 1 acceptance checks pass.**
-- Phase 2: MCP server (rmcp, stdio) with find_symbol/outline/callers/callees/get_context; budgeted output; p95 ≈0.6ms on synthetic 100k-LOC; MCP e2e test. **`codegraph init` added this session**: detects Claude Code/Cursor/OpenCode by filesystem markers, prints merged config, applies only after confirmation (`--yes`), `--dry-run`, `--global`, `--agent`, merges (never clobbers) existing configs, `.codegraph.bak` backups, idempotent; 9 integration tests.
-- Phase 0.5: `codegraph update` (ureq+rustls, SHA-256 verify, atomic replace, tamper abort — integration-tested against a local fake HTTP server). `install/install.sh` (OS/arch detect, pinned/latest, checksum-verified, `~/.codegraph/bin`, PATH prompt on tty, `--uninstall`) + `install/test-install.sh` (**7/7 pass**: happy path, tamper abort, missing checksum, spaces-in-HOME, uninstall, bad flag) + full piped one-liner install verified end-to-end against a local fake release server. `install/install.ps1` written (Get-FileHash verify, User PATH opt-in, `-Uninstall`, `-Version`, `-ReleaseBase`) — **not yet executed anywhere** (no Windows/pwsh on this machine). `.github/workflows/release.yml`: tag `v*` → 6 targets (linux x64/arm musl, macOS x64/arm64 ad-hoc signed, Windows x64/arm64) → `checksums.txt` → GitHub Release; dynamic-dep checks (ldd allowlist, otool, PE byte-scan for CRT). CI now tests on ubuntu+macos+windows.
+- Phase 1: TypeScript/JavaScript plugin behind the `LanguagePlugin` trait (`crates/parse` = trait + walker, `crates/lang-ts` = TS/JS plugin). `.ts/.tsx/.mts/.cts/.js/.jsx/.mjs/.cjs`. Fixtures: `tiny-api`, `web-shop`, `cli-tool`, `js-tool` (hand-verified expected JSON), `crlf-repo` (CRLF pinned via `.gitattributes`). No-op re-index = 0 parses. Synthetic 100k-LOC TS repo: full index ~1.0s. Schema TS-scan test passes. **Phase 1 acceptance passes.**
+- Phase 2: MCP server (rmcp, stdio) with find_symbol/outline/callers/callees/get_context/status; budgeted output; MCP e2e test. **Phase 2 acceptance passes.** p95 ≈0.6ms on synthetic index.
+- Phase 0.5 (partial): `codegraph update` (SHA-256 verify, atomic replace, tamper abort, integration-tested vs fake HTTP server). `install/install.sh` (+ 7/7 harness pass) and `install.ps1` (untested — no Windows here). `.github/workflows/release.yml` written, never run. Blocked on: GitHub remote + `v*` tag + clean machines.
+- Phase 2.5 (new): `crates/agents` — data-driven Tier 1 adapter table, all 9 agents, config paths/formats re-verified against official docs on 2026-11-19. Surgical JSON/JSONC/TOML editing (comments, formatting, key order, other servers survive); backup-once + atomic write; byte-for-byte restore on `agents remove`; `.codegraph.bak` never overwritten; TOCTOU guard re-checks file before writing. Instruction block (`<!-- codegraph:start -->`) written idempotently into AGENTS.md/CLAUDE.md/GEMINI.md. `codegraph init` indexes the repo, detects agents (PATH + markers), prints diffs, applies only with confirmation (`--yes`), `--dry-run`, `--scope user|project`, `--agent` (repeatable), creates the stable shim at `~/.codegraph/bin/codegraph`. New CLI: `agents list|remove|doctor`, `mcp-config --format json|toml|yaml`, `query <tool>` (identical output to MCP). MCP: `readOnlyHint` on all 6 tools, new `status` tool (role/indexing/freshness/counts), `.codegraph/serve.lock` elects one updater per repo (others read-only), first index runs in the background. Conformance tests in CI (3 OSes): handshake, tool list, every tool call, malformed input survives, stdout carries only JSON-RPC frames, exactly one updater among 3 concurrent serves, background first-index works.
+- Real installs (this machine, 2026-11-19): OpenCode v2.0.27 — config points at shim, `opencode mcp list` → `✓ codegraph connected`, `codegraph doctor --agent opencode` all PASS. Claude Code 2.1.201 — `claude mcp list` finds codegraph in `.mcp.json`, reports `⏸ Pending approval` (expected for project scope until interactive approval).
 
 ## What is broken or incomplete
 
-- **Phase 0.5 cannot be fully "done" without a GitHub remote**: pushing a `v*` tag is what exercises the release workflow, the real one-line installs, Gatekeeper behavior on macOS, and the Windows installer. Nothing in the release pipeline has run on GitHub yet.
-- `install/install.ps1` untested (no Windows here); CI only covers install.sh.
-- `.github/workflows/release.yml` untested end-to-end; `windows-11-arm` and `ubuntu-24.04-arm` runner labels assumed correct (GA in 2026); musl-tools apt install assumed available.
-- CommonJS `require()` calls are recorded as call sites but **not** mapped to import bindings (CJS interop resolution deferred; ESM named/default/namespace imports resolve). Recorded as known gap.
-- DECISIONS.md log was truncated by the owner's 2026-11-19 working-tree edit; prior rationale entries (schema v2 `line` column, imports-table decision, edge `valid_hash`, etc.) are recoverable via git. Not restored — see open questions.
-- p95 verified on synthetic index only; no transcript yet of a real agent driving `codegraph init` + MCP end-to-end on this repo (owner to wire it, or phase 3 dogfooding).
+- Phase 0.5 cannot finish without a GitHub remote: pushing `main` + tagging `v0.2.0` is required to exercise release CI, real one-line installs, Gatekeeper and the Windows installer. Owner must decide (will ask).
+- `install/install.ps1` untested (no Windows/pwsh here); runner labels `windows-11-arm` / `ubuntu-24.04-arm` assumed correct.
+- CommonJS `require()` calls are recorded as call sites but not mapped to import bindings (CJS interop deferred; ESM named/default/namespace resolve).
+- MCP `roots` NOT used: deprecated in protocol 2026-07-28 (SEP-2577). Repo resolution = `--project` > `$CODEGRAPH_PROJECT` > walk up from cwd to nearest `.git`.
+- `init` does not shell out to agent-native CLIs (`claude mcp add` etc.); configs are edited surgically instead (see DECISIONS.md).
+- Doctor's handshake spawns each configured agent's server; on a slow machine the 5s timeout may false-FAIL (set up is otherwise fine).
+- Tier 1 verification status: OpenCode and Claude Code verified on a real install here; Cursor, VS Code Copilot, Codex CLI, Gemini CLI, Antigravity, Windsurf, Claude Desktop remain unverified end-to-end (config formats and paths verified against official docs only). See COMPAT.md.
+- README's per-agent guide links (`docs/agents/*.md`) do not exist yet — generation lands in Phase 2.6; README now says so.
 
 ## Acceptance checks
 
 | Phase | Name | Status |
 |---|---|---|
 | 0 | Skeleton | PASS |
-| 0.5 | Distribution (CI builds, install scripts) | PARTIAL — implemented + locally verified (install.sh 7/7, update e2e, fake-release one-liner e2e); clean-machine/release-run proof pending GitHub remote + tag |
-| 1 | Parse and store | PASS (all listed checks incl. CRLF + schema scan + 100k-LOC perf on synthetic; Kapruka re-check pending) |
-| 2 | MCP server, basic tools | PASS (+ `codegraph init` acceptance added and tested) |
+| 0.5 | Distribution (CI builds, install scripts) | PARTIAL — implemented + locally verified; clean-machine/release-run proof pending GitHub remote + tag |
+| 1 | Parse and store | PASS |
+| 2 | MCP server, basic tools | PASS |
+| 2.5 | Universal agent support | PASS for the parts that need no foreign machines: conformance suite green, merge/restore/idempotency tests, doctor self-check, OpenCode + Claude Code verified on real installs. Tier 1 real-install checks for the other 7 agents pending (need installs; COMPAT.md has per-agent verification log) |
+| 2.6 | Observability, setup guidance, generated docs | not started |
 | 3 | Incremental updates | not started |
 | 4 | Precise resolution | not started |
 | 5 | Derived behavior facts | not started |
@@ -42,22 +48,25 @@ Note: the working-tree edit that reset this file (2026-11-19) discarded the prev
 | 10 | Evaluation | not started |
 | 11 | Language expansion and framework plugins | not started |
 | 12 | Signing and enterprise distribution (only when needed) | not started |
+| 13 | Local UI (only after Phase 10 is positive) | not started |
 
 ## Dogfooding notes (from phase 3 onward)
 
 Where codegraph failed or wasted tokens when used on its own repo:
 
-- None yet. (This repo is Rust; this index only sees fixtures + any TS/JS files — the honest dogfooding path for the Rust repo itself is phase 3+ with Kapruka or after Python support lands.)
+- The repo is Rust; the TS/JS index only sees `fixtures/` (15 files). Dogfooding this repo for real starts with Phase 3+ or Python support.
+- `status` tool output on this repo: `index@db595ea2bb79 fresh` after re-index; files=15 (fixtures), symbols=26.
+- The new `codegraph query` CLI works on this repo (find_symbol login → fixtures/tiny-api/src/login.ts:9-12).
 
 ## Next step
 
-1. Phase 3: file watcher + `git diff` incremental re-index; property test (incremental == full re-index); `codegraph sync`; start dogfooding; bench/ skeleton.
-2. Owner actions needed to finish Phase 0.5: create the GitHub remote, push `main`, tag `v0.2.0`; then run the release workflow and test install one-liners on clean Windows/macOS/Linux machines.
+1. Phase 2.6: query log, `status`/`stats`/`doctor` polish, post-install guidance, generated per-agent docs + README table from the adapter table, architecture.mmd/SVG sync (CI `mmdc` drift check).
+2. Or Phase 3 first (file watcher + git-diff incremental re-index + property test; dogfooding proper). The plan's task list does 2.6 first (task 4) then 3.
+3. Owner action to finish Phase 0.5: GitHub remote + tag `v0.2.0`; then install one-liners on clean Windows/macOS/Linux machines.
 
 ## Open questions for the owner
 
-1. **GitHub remote**: repo is local-only. Creating it + pushing + tagging `v0.2.0` is required to complete Phase 0.5 acceptance (release CI, one-line install, Gatekeeper check). Want me to prepare it? I won't push without your go-ahead.
-2. **DECISIONS.md truncation**: your 2026-11-19 edit dropped the detailed 2026-11-18 log. Want it restored (appended back under a "recovered" section), or intentional curation? It's recoverable from git either way.
-3. **Kapruka 100k-LOC re-check**: may I re-run the perf smoke test against Kapruka (read-only, index into /tmp only) to confirm the Phase 1 "<2 min" acceptance on a real repo?
-4. Release base URL defaults to `https://github.com/ravijaanthony/codegraph` (inferred from LICENSE handle). Correct?
-5. LICENSE copyright line still says "ravijaanthony" (git handle, not legal name) — confirm or correct before any public release.
+1. GitHub remote: repo is local-only. Create it + push + tag `v0.2.0` to finish Phase 0.5? (Will not push without a go-ahead.)
+2. `.mcp.json`, `AGENTS.md`, `CLAUDE.md` created in this repo by the 2026-11-19 verification runs (OpenCode + Claude Code). Keep or remove? Keeping is consistent with `opencode.json` (already tracked).
+3. Release base URL defaults to `https://github.com/ravijaanthony/codegraph` — correct?
+4. LICENSE copyright line still says "ravijaanthony" (git handle) — confirm or correct before any public release.
