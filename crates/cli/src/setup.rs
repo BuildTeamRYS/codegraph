@@ -747,7 +747,7 @@ pub fn doctor(ids: &[String], scope: Option<Scope>, path: Option<&Path>) -> Resu
                             .unwrap_or(0);
                         if mode & 0o111 == 0 {
                             println!("FAIL server binary is not executable: {command}");
-                            println!("     fix: chmod +x {command}  (or re-run the installer)");
+                            println!("     fix: chmod +x {command}  (or replace it with an executable copy)");
                             ok = false;
                         } else {
                             println!("PASS server command exists: {command}");
@@ -757,7 +757,7 @@ pub fn doctor(ids: &[String], scope: Option<Scope>, path: Option<&Path>) -> Resu
                     println!("PASS server command exists: {command}");
                 } else {
                     println!("FAIL server binary not found: {command}");
-                    println!("     fix: re-run the installer or `codegraph init` to rewrite the shim path");
+                    println!("     fix: restore the binary at that path, or run `codegraph init` to rewrite the shim path");
                     ok = false;
                 }
             } else {

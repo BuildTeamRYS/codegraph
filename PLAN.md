@@ -61,7 +61,7 @@ Rules:
 - MCP server over stdio (use the official Rust MCP SDK if available, else implement JSON-RPC directly)
 - First language: TypeScript, covering JS/JSX/TSX (decided, see DECISIONS.md). Second: Python. The core stays language-agnostic through a `LanguagePlugin` trait
 - Target platforms: Windows (x64, arm64), macOS (arm64, x64), Linux (x64, arm64, static musl)
-- Distribution: one-line install scripts (`install.sh`, `install.ps1`) that fetch a prebuilt binary from GitHub Releases. No package manager required
+- Distribution: prebuilt release archives (`.tar.gz` / `.zip`) downloaded manually from GitHub Releases. No package manager or bootstrap script required
 
 **Repo layout:**
 ```
@@ -78,7 +78,6 @@ codegraph/
     mcp/         # MCP server (standard protocol only)
     agents/      # per-agent adapters: detect, install, uninstall, doctor (data-driven)
     cli/         # `codegraph index|serve|status|query|init|agents|doctor|mcp-config`
-  install/       # install.sh, install.ps1, checksum and uninstall logic
   fixtures/      # small sample repos with KNOWN answers (used by tests)
   bench/         # evaluation tasks and harness
   README.md  PLAN.md  DECISIONS.md  STATUS.md  COMPAT.md
@@ -119,19 +118,18 @@ Cargo workspace, CLI with `index`, `status`, CI running `cargo test` and `clippy
 **Accept:** `codegraph status` runs and prints schema version.
 
 ### Phase 0.5: Distribution (do this early, not last)
-Goal: a developer installs with one command and needs nothing else on their machine.
-- CI matrix builds release binaries for Windows (x64, arm64), macOS (arm64, x64) and Linux (x64, arm64, static musl) and publishes them with SHA-256 checksums to GitHub Releases.
+Goal: a developer downloads one archive and needs nothing else on their machine.
+- CI matrix builds release binaries and publishes `.tar.gz` / `.zip` archives to GitHub Releases. There are no bootstrap install scripts.
 - SQLite and all tree-sitter grammars are compiled into the binary.
 - macOS builds get a free ad-hoc signature (`codesign -s -`) in CI. Apple Silicon kills unsigned binaries without it. No paid signing yet.
-- `install/install.sh` (macOS/Linux) and `install/install.ps1` (Windows): detect OS and CPU, download the right binary, verify the SHA-256 (abort on mismatch), install to a user folder (`~/.codegraph/bin` or `%LOCALAPPDATA%\codegraph\bin`) with no admin rights, offer to add it to PATH, print every action it takes, support `--uninstall` and a pinned `--version`.
-- `codegraph update` self-updates the binary and keeps the install path stable. After installing, the script prints the next step: `codegraph init`.
-- Docs show the OS-appropriate one-liner: `curl -fsSL <url>/install.sh | sh` and `irm <url>/install.ps1 | iex`. Do NOT point users at browser downloads (those get quarantine/SmartScreen flags).
+- `codegraph init` creates a stable shim at `~/.codegraph/bin/codegraph`; README documents manual archive extraction, PATH setup, and the next step (`codegraph init`).
+- `codegraph update` self-updates the binary and keeps the install path stable. Alignment with the archive-based release assets is tracked in STATUS.md.
+- Docs show manual download and extraction for each OS, including the browser quarantine and SmartScreen escape hatches.
 **Accept:**
-- On clean Windows, macOS and Linux machines or VMs with no Rust, Node or Python, the one-line install followed by `codegraph --version` and `codegraph index fixtures/<repo>` succeeds.
+- On clean Windows, macOS and Linux machines with no Rust, Node or Python, downloading the right archive, extracting it, then running `codegraph --version` and `codegraph index fixtures/<repo>` succeeds.
 - The binary's dynamic dependencies are only OS-provided libraries (`ldd` / `otool -L` / `dumpbin`).
-- A macOS arm64 binary installed by the script runs with no Gatekeeper prompt.
-- A tampered binary (wrong checksum) makes the installer abort. Test this explicitly.
-- The installer works when the home directory path contains spaces.
+- A macOS arm64 binary extracted from its archive runs with the documented quarantine removal or right-click → Open.
+- The Windows x64 archive runs on ARM64 Windows via emulation.
 
 ### Phase 1: Parse and store (TypeScript first)
 Walk the repo (respect `.gitignore`, flag generated/vendor), parse with tree-sitter, extract files,

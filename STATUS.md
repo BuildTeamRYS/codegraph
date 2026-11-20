@@ -6,21 +6,21 @@ Note: the 2026-11-19 owner edit of the planning docs reset this file to "nothing
 
 ## Current phase
 
-Phase 2.5 (universal agent support) — implemented and green; real-install verification done for OpenCode and Claude Code; the rest of Tier 1 needs a real install each. Next: Phase 2.6 (observability: query log, status/stats/doctor polish, generated per-agent docs) or Phase 3 (incremental updates). Phase 0.5 remains blocked on a GitHub remote + release tag.
+Phase 2.5 (universal agent support) — implemented and green; real-install verification done for OpenCode and Claude Code; the rest of Tier 1 needs a real install each. Next: Phase 2.6 (observability: query log, status/stats/doctor polish, generated per-agent docs) or Phase 3 (incremental updates). Phase 0.5 now uses release archives plus documented manual install; no bootstrap scripts remain.
 
 ## What works
 
-- Phase 0: cargo workspace, CI (fmt+clippy+test on ubuntu/macos/windows; test matrix + install-script harness).
+- Phase 0: cargo workspace, CI (fmt+clippy+test on ubuntu/macos/windows; three-OS test matrix).
 - Phase 1: TypeScript/JavaScript plugin behind the `LanguagePlugin` trait (`crates/parse` = trait + walker, `crates/lang-ts` = TS/JS plugin). `.ts/.tsx/.mts/.cts/.js/.jsx/.mjs/.cjs`. Fixtures: `tiny-api`, `web-shop`, `cli-tool`, `js-tool` (hand-verified expected JSON), `crlf-repo` (CRLF pinned via `.gitattributes`). No-op re-index = 0 parses. Synthetic 100k-LOC TS repo: full index ~1.0s. Schema TS-scan test passes. **Phase 1 acceptance passes.**
 - Phase 2: MCP server (rmcp, stdio) with find_symbol/outline/callers/callees/get_context/status; budgeted output; MCP e2e test. **Phase 2 acceptance passes.** p95 ≈0.6ms on synthetic index.
-- Phase 0.5 (partial): `codegraph update` (SHA-256 verify, atomic replace, tamper abort, integration-tested vs fake HTTP server). `install/install.sh` (+ 7/7 harness pass) and `install.ps1` (untested — no Windows here). `.github/workflows/release.yml` written, never run. Blocked on: GitHub remote + `v*` tag + clean machines.
+- Phase 0.5 (partial): `codegraph update` (SHA-256 verify, atomic replace, tamper abort, integration-tested vs fake HTTP server) and `.github/workflows/release.yml`, which publishes prebuilt archives on a `v*` tag. Bootstrap install scripts and their CI harnesses were removed; README documents manual archive extraction instead.
 - Phase 2.5 (new): `crates/agents` — data-driven Tier 1 adapter table, all 9 agents, config paths/formats re-verified against official docs on 2026-11-19. Surgical JSON/JSONC/TOML editing (comments, formatting, key order, other servers survive); backup-once + atomic write; byte-for-byte restore on `agents remove`; `.codegraph.bak` never overwritten; TOCTOU guard re-checks file before writing. Instruction block (`<!-- codegraph:start -->`) written idempotently into AGENTS.md/CLAUDE.md/GEMINI.md. `codegraph init` indexes the repo, detects agents (PATH + markers), prints diffs, applies only with confirmation (`--yes`), `--dry-run`, `--scope user|project`, `--agent` (repeatable), creates the stable shim at `~/.codegraph/bin/codegraph`. New CLI: `agents list|remove|doctor`, `mcp-config --format json|toml|yaml`, `query <tool>` (identical output to MCP). MCP: `readOnlyHint` on all 6 tools, new `status` tool (role/indexing/freshness/counts), `.codegraph/serve.lock` elects one updater per repo (others read-only), first index runs in the background. Conformance tests in CI (3 OSes): handshake, tool list, every tool call, malformed input survives, stdout carries only JSON-RPC frames, exactly one updater among 3 concurrent serves, background first-index works.
 - Real installs (this machine, 2026-11-19): OpenCode v2.0.27 — config points at shim, `opencode mcp list` → `✓ codegraph connected`, `codegraph doctor --agent opencode` all PASS. Claude Code 2.1.201 — `claude mcp list` finds codegraph in `.mcp.json`, reports `⏸ Pending approval` (expected for project scope until interactive approval).
 
 ## What is broken or incomplete
 
-- Phase 0.5 needs one more thing from the owner: re-push the `v0.2.0` tag so CI republishes with the fixed Windows CRT gate and `+crt-static` builds; then verify the 9 assets on clean machines (curl one-liners; see README.md).
-- `install/install.ps1` untested (no Windows/pwsh here); runner labels `windows-11-arm` / `ubuntu-24.04-arm` assumed correct.
+- Phase 0.5 still needs a `v*` tag to exercise `release.yml`; expected output is five archives, which the README now tells users to extract manually.
+- `codegraph update` expects raw `codegraph-<target>` binaries plus `checksums.txt`, but `release.yml` currently publishes archives only — this needs alignment before self-update can work from a real release.
 - CommonJS `require()` calls are recorded as call sites but not mapped to import bindings (CJS interop deferred; ESM named/default/namespace resolve).
 - MCP `roots` NOT used: deprecated in protocol 2026-07-28 (SEP-2577). Repo resolution = `--project` > `$CODEGRAPH_PROJECT` > walk up from cwd to nearest `.git`.
 - `init` does not shell out to agent-native CLIs (`claude mcp add` etc.); configs are edited surgically instead (see DECISIONS.md).
@@ -33,7 +33,7 @@ Phase 2.5 (universal agent support) — implemented and green; real-install veri
 | Phase | Name | Status |
 |---|---|---|
 | 0 | Skeleton | PASS |
-| 0.5 | Distribution (CI builds, install scripts) | PARTIAL — main is green on all 3 OSes; the Windows CRT byte-scan gate (an invalid check) blocked the first release build; now replaced with a PE import-table check + `+crt-static` on Windows legs. Release publishes only after the owner re-tags `v0.2.0` and CI is green |
+| 0.5 | Distribution (CI builds, release archives) | PARTIAL — `release.yml` builds and publishes five archives on a `v*` tag; install scripts and harnesses removed; README documents manual extraction; first tagged release run still unverified |
 | 1 | Parse and store | PASS |
 | 2 | MCP server, basic tools | PASS |
 | 2.5 | Universal agent support | PASS for the parts that need no foreign machines: conformance suite green, merge/restore/idempotency tests, doctor self-check, OpenCode + Claude Code verified on real installs. Tier 1 real-install checks for the other 7 agents pending (need installs; COMPAT.md has per-agent verification log) |
@@ -60,13 +60,13 @@ Where codegraph failed or wasted tokens when used on its own repo:
 
 ## Next step
 
-1. **Owner action: tag `v0.2.0`** (`git tag v0.2.0 && git push origin v0.2.0`) — fires `release.yml`, publishes the Release with the 9 assets (Windows ARM64 best-effort, install.ps1 falls back to x86_64). Then verify on clean Windows/macOS/Linux machines — the one-liners in README.md now work anonymously. Also consider deleting the stale manual `0.2.0` pre-release page.
+1. **Owner action: push a `v*` tag** (for example `git tag v0.2.0 && git push origin v0.2.0`) — fires `release.yml` and should publish five archives. Verify them on the Releases page, then follow the README manual install on clean Windows/macOS/Linux machines.
 2. Phase 2.6: query log, `status`/`stats`/`doctor` polish, post-install guidance, generated per-agent docs + README table from the adapter table, architecture.mmd/SVG sync (CI `mmdc` drift check).
 3. Or Phase 3 first (file watcher + git-diff incremental re-index + property test; dogfooding proper). The plan's task list does 2.6 first (task 4) then 3.
 
 ## Open questions for the owner
 
 1. LICENSE copyright line still says "ravijaanthony" (git handle) — confirm or correct.
-2. Windows-ARM64 asset present only if the ARM64 MSVC toolset exists on the free `windows-latest` runner; otherwise install.ps1 falls back to x86_64 transparently. Acceptable?
-3. RPM-based Linux (Fedora/RHEL/openSUSE): static musl + `install.sh`, no `.rpm` packages at this stage. Confirm deferred (Phase 12).
+2. Windows ARM64: publish only the x64 archive and rely on Windows emulation, as documented in README. Acceptable?
+3. RPM-based Linux (Fedora/RHEL/openSUSE): static musl archive only, no `.rpm` packages at this stage. Confirm deferred (Phase 12).
 4. Tag choice for the first public release: `v0.2.0` (never published, clean reuse) or bump to `v0.2.1`?

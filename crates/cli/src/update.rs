@@ -31,7 +31,7 @@ pub fn releases_base() -> String {
 }
 
 /// Release target triple for this build. Linux targets are static musl
-/// (matches install.sh; zero runtime dependencies).
+/// (zero runtime dependencies).
 pub fn target_triple() -> &'static str {
     cfg_if::cfg_if! {
         if #[cfg(all(target_os = "linux", target_arch = "x86_64"))] {

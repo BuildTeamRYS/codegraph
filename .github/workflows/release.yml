@@ -1,19 +1,17 @@
 name: Release Binaries
 
-# Builds the prebuilt binaries and publishes them, with SHA-256 checksums, as
-# a GitHub Release when a v* tag is pushed. install.sh / install.ps1 download
-# from that release.
+# Builds prebuilt binaries and publishes them as GitHub Release archives
+# (.tar.gz / .zip) when a v* tag is pushed.
 #
-# Free-tier reality: no ARM hosted runners on a private org, so the two
-# aarch64 targets are produced on x86_64 runners (Linux aarch64 via `cross`,
-# Windows aarch64 best-effort — the job may fail without blocking the
-# release; install.ps1 falls back to the x86_64 binary on ARM64 Windows,
-# which Windows emulates natively). Linux stays static musl so it runs on
-# every distro incl. RPM-based ones. Release assets are exactly:
-#   6 binaries + install.sh + install.ps1 + checksums.txt
-# (Windows ARM64 may legitimately be missing when the ARM64 MSVC toolset is
-# unavailable — the asset simply isn't uploaded; checksums.txt covers what
-# was built.)
+# Free-tier reality: no ARM hardware is required. Linux arm64 is built from an
+# x86_64 runner; Windows publishes x64 only, which runs on ARM64 Windows via
+# emulation. Linux stays static musl so it runs on every distro, including
+# RPM-based ones. Release assets are exactly:
+#   codegraph-linux-x64.tar.gz
+#   codegraph-linux-arm64.tar.gz
+#   codegraph-macos-x64.tar.gz
+#   codegraph-macos-arm64.tar.gz
+#   codegraph-windows-x64.zip
 on:
   push:
     tags: ["v*"]
