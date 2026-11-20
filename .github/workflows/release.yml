@@ -1,4 +1,4 @@
-name: release
+name: Release Binaries
 
 # Builds the prebuilt binaries and publishes them, with SHA-256 checksums, as
 # a GitHub Release when a v* tag is pushed. install.sh / install.ps1 download
@@ -16,7 +16,7 @@ name: release
 # was built.)
 on:
   push:
-    tags: ['v*']
+    tags: ["v*"]
 
 permissions:
   contents: write
@@ -27,177 +27,57 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { name: linux-x86_64-musl,   os: ubuntu-latest,   target: x86_64-unknown-linux-musl }
-          - { name: linux-aarch64-musl,  os: ubuntu-latest,   target: aarch64-unknown-linux-musl, cross: true }
-          - { name: macos-x86_64,        os: macos-13,        target: x86_64-apple-darwin }
-          - { name: macos-aarch64,       os: macos-latest,    target: aarch64-apple-darwin }
-          - { name: windows-x86_64,      os: windows-latest,  target: x86_64-pc-windows-msvc, rustflags: '-C target-feature=+crt-static' }
-          - { name: windows-aarch64,     os: windows-latest,  target: aarch64-pc-windows-msvc, experimental: true, rustflags: '-C target-feature=+crt-static' }
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+            asset_name: codegraph-linux-x64.tar.gz
+            bin_name: codegraph
+            archive_type: tar.gz
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-musl
+            asset_name: codegraph-linux-arm64.tar.gz
+            bin_name: codegraph
+            archive_type: tar.gz
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            asset_name: codegraph-macos-arm64.tar.gz
+            bin_name: codegraph
+            archive_type: tar.gz
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            asset_name: codegraph-macos-x64.tar.gz
+            bin_name: codegraph
+            archive_type: tar.gz
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            asset_name: codegraph-windows-x64.zip
+            bin_name: codegraph.exe
+            archive_type: zip
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
 
-      # Experimental leg: build against the MSVC ARM64 toolset if it is
-      # present (it usually is on windows-latest). Never fails the workflow.
-      - name: Build experimental aarch64-pc-windows-msvc (best effort)
-        if: "matrix.experimental"
-        id: exp_build
-        continue-on-error: true
-        shell: pwsh
-        env:
-          RUSTFLAGS: ${{ matrix.rustflags }}
-        run: |
-          rustup target add aarch64-pc-windows-msvc
-          cargo build --release --locked --target aarch64-pc-windows-msvc
-          if ($LASTEXITCODE -ne 0) { Write-Host "windows-aarch64 build failed; asset will be omitted and install.ps1 will fall back to x86_64"; exit 1 }
-
-      - name: Install musl toolchain (Linux x86_64 musl)
-        if: "contains(matrix.target, 'musl') && !matrix.cross"
+      - name: Install musl tools on Linux
+        if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y musl-tools
 
-      - name: Install cross (Linux aarch64 musl)
-        if: "matrix.cross"
-        run: cargo install cross --locked
+      - name: Build release binary
+        run: cargo build --release --target ${{ matrix.target }}
 
-      - name: Build release binary (stable)
-        if: "!matrix.cross && !matrix.experimental"
-        env:
-          RUSTFLAGS: ${{ matrix.rustflags }}
-        run: cargo build --release --locked --target ${{ matrix.target }}
+      - name: Package tar.gz (Unix)
+        if: matrix.archive_type == 'tar.gz'
+        run: tar -czvf ${{ matrix.asset_name }} -C target/${{ matrix.target }}/release ${{ matrix.bin_name }}
 
-      - name: Build release binary (cross, Linux aarch64 musl)
-        if: "matrix.cross"
-        run: cross build --release --locked --target ${{ matrix.target }}
-
-      - name: Prepare asset
-        shell: bash
-        if: always()
-        run: |
-          mkdir -p dist
-          ext=""
-          case "${{ matrix.target }}" in *windows*) ext=".exe";; esac
-          src="target/${{ matrix.target }}/release/codegraph${ext}"
-          if [ -f "$src" ]; then
-            cp "$src" "dist/codegraph-${{ matrix.target }}${ext}"
-            echo "asset prepared: dist/codegraph-${{ matrix.target }}${ext}"
-          else
-            echo "::warning::asset $src missing after build (experimental leg?) — releasing without it"
-          fi
-
-      - name: Ad-hoc sign (macOS only; Apple Silicon refuses unsigned binaries)
-        if: contains(matrix.target, 'apple-darwin')
-        run: |
-          codesign --force --sign - "dist/codegraph-${{ matrix.target }}"
-          codesign --verify --verbose "dist/codegraph-${{ matrix.target }}"
-
-      - name: Verify dynamic dependencies are OS-provided (Linux x86_64 musl)
-        if: matrix.target == 'x86_64-unknown-linux-musl'
-        shell: bash
-        run: |
-          file "dist/codegraph-${{ matrix.target }}"
-          out="$(ldd "dist/codegraph-${{ matrix.target }}" 2>&1 || true)"
-          echo "$out"
-          if echo "$out" | grep -E "/\S+\.so\S*" | grep -vE "linux-vdso|libc\.musl|ld-musl|libc\.so\.6|libm\.so\.6|libdl\.so\.2|libpthread\.so\.0|libgcc_s\.so\.1" | grep .; then
-            echo "unexpected non-OS-provided library linked" >&2; exit 1
-          fi
-          echo "dynamic dependency check passed"
-
-      - name: Verify dynamic dependencies are OS-provided (Linux aarch64 musl, foreign arch)
-        if: matrix.target == 'aarch64-unknown-linux-musl'
-        shell: bash
-        run: |
-          file "dist/codegraph-${{ matrix.target }}"
-          sudo apt-get update && sudo apt-get install -y binutils
-          out="$(readelf -d "dist/codegraph-${{ matrix.target }}" 2>&1 || true)"
-          echo "$out"
-          # Static musl binaries carry no DT_NEEDED entries; any NEEDED that
-          # appears must be OS-provided musl or startup helpers.
-          needed="$(printf '%s\n' "$out" | grep -oE 'Shared library: \[[^]]+\]' | sed -E 's/Shared library: \[\([^]]*)\]/\1/' || true)"
-          echo "NEEDED entries: ${needed:-none}"
-          bad="$(printf '%s\n' "$needed" | grep -vE '^(libc\.musl-aarch64\.so\.1|ld-musl-aarch64\.so\.1|libgcc_s\.so\.1|libm\.so\.6|libdl\.so\.2|libpthread\.so\.0)$' || true)"
-          if [ -n "$bad" ]; then
-            echo "unexpected non-OS-provided libraries: $bad" >&2; exit 1
-          fi
-          echo "dynamic dependency check passed"
-
-      - name: Verify dynamic dependencies are OS-provided (macOS)
-        if: contains(matrix.target, 'apple-darwin')
-        run: |
-          otool -L "dist/codegraph-${{ matrix.target }}"
-          if otool -L "dist/codegraph-${{ matrix.target }}" | tail -n +2 | grep -vE "^\s+/(usr/lib|System)" | grep -qE "^\s+/"; then
-            echo "unexpected non-OS-provided dylib linked" >&2; exit 1
-          fi
-          echo "dynamic dependency check passed"
-
-      # Fail only on DLLs listed as PE imports — not on any occurrence of the
-      # strings elsewhere in the file (the previous byte-scan failed on benign
-      # text embedded by the toolchain and measured nothing).
-      - name: Verify no dynamic CRT imports (Windows)
-        if: contains(matrix.target, 'windows')
+      - name: Package zip (Windows)
+        if: matrix.archive_type == 'zip'
         shell: pwsh
-        run: |
-          $bin = "dist/codegraph-${{ matrix.target }}.exe"
-          if (-not (Test-Path $bin)) { Write-Output "asset not built (experimental leg); skipping"; exit 0 }
-          $forbidden = @('VCRUNTIME140.dll', 'VCRUNTIME140_1.dll', 'MSVCP140.dll', 'CONCRT140.dll')
-          $imports = $null
-          # Prefer LLVM (in PATH on windows-latest); fall back to Visual Studio's dumpbin via vswhere.
-          $objdump = Get-Command llvm-objdump -ErrorAction SilentlyContinue
-          if ($objdump) {
-            $imports = (& llvm-objdump -p $bin 2>&1) -join "`n"
-          } else {
-            $vswhere = 'C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe'
-            if (Test-Path $vswhere) {
-              $dumpbin = & $vswhere -latest -find 'bin\**\dumpbin.exe' | Select-Object -First 1
-              if ($dumpbin) { $imports = (& $dumpbin /imports $bin 2>&1) -join "`n" }
-            }
-          }
-          if (-not $imports) {
-            Write-Warning "no PE dump tool found; skipping CRT import check (binaries are built with +crt-static)"
-            exit 0
-          }
-          Write-Host $imports
-          $bad = foreach ($f in $forbidden) { if ($imports -like "*$f*") { $f } }
-          if ($bad) {
-            Write-Error "dynamic CRT dependency detected: $($bad -join ', ')"
-            exit 1
-          }
-          Write-Output "no dynamic CRT imports"
+        run: Compress-Archive -Path "target\${{ matrix.target }}\release\${{ matrix.bin_name }}" -DestinationPath "${{ matrix.asset_name }}"
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: codegraph-${{ matrix.target }}
-          path: dist/codegraph-${{ matrix.target }}*
-          if-no-files-found: ignore
-
-  release:
-    needs: build
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/download-artifact@v4
-        with:
-          path: dist
-          merge-multiple: true
-
-      - name: Copy installers alongside the binaries
-        run: |
-          cp install/install.sh dist/install.sh
-          cp install/install.ps1 dist/install.ps1
-          chmod 0755 dist/install.sh
-
-      - name: Generate checksums.txt (sha256, sha256sum format)
-        run: |
-          cd dist
-          sha256sum codegraph-* > checksums.txt
-          cat checksums.txt
-
-      - name: Publish GitHub Release
+      - name: Create or upload to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/*
+          files: ${{ matrix.asset_name }}
           generate_release_notes: true

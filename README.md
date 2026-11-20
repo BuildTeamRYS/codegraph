@@ -71,8 +71,8 @@ curl -fsSL https://github.com/BuildTeamRYS/codegraph/releases/latest/download/in
 
 **Windows (PowerShell) — one line:**
 
-```powershell
-irm https://github.com/BuildTeamRYS/codegraph/releases/latest/download/install.ps1 | iex
+````powershell
+irm https://raw.githubusercontent.com/BuildTeamRYS/codegraph/main/install.ps1 | iex
 ```
 
 You can read the scripts first: they live in [`install/`](install/). Both verify a SHA-256 checksum before writing anything, print each step ([1/6] detect → [6/6] summary with paths), and install into `~/.codegraph/bin` (Windows: `%LOCALAPPDATA%\codegraph\bin`) — no admin rights, no system-wide package manager. `--uninstall` / `-Uninstall` removes the binary and offers to undo the agent configs `codegraph init` created. The binaries are self-contained:
@@ -104,23 +104,28 @@ If any of that doesn't work for you, there are three fallbacks, in order of pref
    chmod +x codegraph-x86_64-unknown-linux-musl
    ./codegraph-x86_64-unknown-linux-musl --version
    ./codegraph-x86_64-unknown-linux-musl init    # configures your coding agents for this repo
-   ```
-   **macOS:** the browser quarantine-blocks unsigned binaries. Either right-click → **Open** once, or:
-   ```sh
-   chmod +x codegraph-aarch64-apple-darwin
-   xattr -d com.apple.quarantine ./codegraph-aarch64-apple-darwin
-   ./codegraph-aarch64-apple-darwin --version
-   ./codegraph-aarch64-apple-darwin init
-   ```
-   **Windows:** if SmartScreen prompts "Windows protected your PC": **More info → Run anyway**, then:
-   ```powershell
-   .\codegraph-x86_64-pc-windows-msvc.exe --version
-   .\codegraph-x86_64-pc-windows-msvc.exe init
-   ```
+````
+
+**macOS:** the browser quarantine-blocks unsigned binaries. Either right-click → **Open** once, or:
+
+```sh
+chmod +x codegraph-aarch64-apple-darwin
+xattr -d com.apple.quarantine ./codegraph-aarch64-apple-darwin
+./codegraph-aarch64-apple-darwin --version
+./codegraph-aarch64-apple-darwin init
+```
+
+**Windows:** if SmartScreen prompts "Windows protected your PC": **More info → Run anyway**, then:
+
+```powershell
+.\codegraph-x86_64-pc-windows-msvc.exe --version
+.\codegraph-x86_64-pc-windows-msvc.exe init
+```
 
 ### Fallback 2 — Offline bundle (no network)
 
 **For the bundle author** — make one zip per OS you need (targets from the table above):
+
 ```sh
 mkdir -p codegraph-demo && cd codegraph-demo
 # copy the four assets + install.sh + install.ps1 + checksums.txt from the release page into this folder
@@ -128,15 +133,18 @@ zip codegraph-demo-linux-x64.zip codegraph-x86_64-unknown-linux-musl install.sh 
 zip codegraph-demo-macos-arm64.zip codegraph-aarch64-apple-darwin install.sh checksums.txt
 Compress-Archive -Path codegraph-x86_64-pc-windows-msvc.exe, install.ps1, checksums.txt -DestinationPath codegraph-demo-windows-x64.zip
 ```
+
 Hand the zip out however you already share files (Teams/Slack/email/internal share).
 
 **For recipients** — unzip, then:
+
 ```sh
 # macOS / Linux
 ./install.sh --from-dir .
 # Windows
 powershell -ExecutionPolicy Bypass -File .\install.ps1 -FromDir .
 ```
+
 The installer prints each step, verifies `checksums.txt` (aborts on mismatch), and installs exactly like the one-liner. No network access is used at any point.
 
 ### Fallback 3 — Build from source (needs Rust)
@@ -149,6 +157,7 @@ cargo build --release
 ### Verify the install
 
 After install:
+
 ```sh
 codegraph --version
 codegraph doctor        # checks the agent configs you created with `codegraph init`
@@ -182,17 +191,17 @@ You should see it call a `codegraph` tool instead of opening many files.
 
 The `codegraph` MCP server works with any MCP-capable client — that is the only integration surface. `codegraph init` detects the agents below from PATH and config markers, shows the exact change to each config, and asks before writing. Config formats were re-verified against each agent's official docs on 2026-11-19; statuses reflect real-install verification (see [COMPAT.md](COMPAT.md)). Per-agent setup guides under `docs/agents/` are generated from the same adapter table in phase 2.6 and are not available yet — until then, `codegraph init` prints each agent's exact steps on setup, and manual setup is documented in [COMPAT.md](COMPAT.md).
 
-| Agent | Setup | Status |
-|---|---|---|
-| Claude Code (CLI, desktop app, IDE extensions) | `codegraph init --agent claude-code` | verified 2026-11-19 (pending interactive approval on first project-scope run) |
-| Cursor | `codegraph init --agent cursor` | unverified |
-| VS Code with GitHub Copilot | `codegraph init --agent vscode-copilot` | unverified |
-| Codex CLI | `codegraph init --agent codex-cli` | unverified |
-| Gemini CLI | `codegraph init --agent gemini-cli` | unverified |
-| Google Antigravity (IDE and CLI) | `codegraph init --agent antigravity` (user scope recommended) | unverified |
-| OpenCode | `codegraph init --agent opencode` | verified 2026-11-19 (`opencode mcp list` → connected) |
-| Windsurf / Devin Desktop | `codegraph init --agent windsurf` | unverified |
-| Claude Desktop | `codegraph init --agent claude-desktop` (user scope only) | unverified |
+| Agent                                          | Setup                                                         | Status                                                                        |
+| ---------------------------------------------- | ------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| Claude Code (CLI, desktop app, IDE extensions) | `codegraph init --agent claude-code`                          | verified 2026-11-19 (pending interactive approval on first project-scope run) |
+| Cursor                                         | `codegraph init --agent cursor`                               | unverified                                                                    |
+| VS Code with GitHub Copilot                    | `codegraph init --agent vscode-copilot`                       | unverified                                                                    |
+| Codex CLI                                      | `codegraph init --agent codex-cli`                            | unverified                                                                    |
+| Gemini CLI                                     | `codegraph init --agent gemini-cli`                           | unverified                                                                    |
+| Google Antigravity (IDE and CLI)               | `codegraph init --agent antigravity` (user scope recommended) | unverified                                                                    |
+| OpenCode                                       | `codegraph init --agent opencode`                             | verified 2026-11-19 (`opencode mcp list` → connected)                         |
+| Windsurf / Devin Desktop                       | `codegraph init --agent windsurf`                             | unverified                                                                    |
+| Claude Desktop                                 | `codegraph init --agent claude-desktop` (user scope only)     | unverified                                                                    |
 
 ### Any other MCP client
 
@@ -213,20 +222,20 @@ If your agent has a shell tool but no MCP support, it can call the same tools fr
 
 ## Commands
 
-| Command | What it does |
-|---|---|
-| `codegraph init` | Index the repo, detect agents, and set them up (asks first) |
-| `codegraph index` | Build or refresh the index |
-| `codegraph serve` | Run the MCP server on stdio (agents launch this) |
-| `codegraph status` | Index health: files and symbols, indexed commit vs HEAD, gaps, active enhancers, connected agents |
-| `codegraph doctor` | Diagnose setup problems per agent |
-| `codegraph stats` | Queries served per agent, latency, and tokens returned |
-| `codegraph query <tool> <args>` | Call a tool from the command line |
-| `codegraph agents list` | List Tier 1 agents and whether they are detected/configured, per scope |
-| `codegraph agents remove <id>` | Undo setup: restores the pre-install config bytes; removes the instruction block |
-| `codegraph agents doctor` | Diagnose setup problems per agent, each finding with a fix (alias: `codegraph doctor`) |
-| `codegraph mcp-config` | Print a config snippet for any MCP client |
-| `codegraph update` | Update the binary |
+| Command                         | What it does                                                                                      |
+| ------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `codegraph init`                | Index the repo, detect agents, and set them up (asks first)                                       |
+| `codegraph index`               | Build or refresh the index                                                                        |
+| `codegraph serve`               | Run the MCP server on stdio (agents launch this)                                                  |
+| `codegraph status`              | Index health: files and symbols, indexed commit vs HEAD, gaps, active enhancers, connected agents |
+| `codegraph doctor`              | Diagnose setup problems per agent                                                                 |
+| `codegraph stats`               | Queries served per agent, latency, and tokens returned                                            |
+| `codegraph query <tool> <args>` | Call a tool from the command line                                                                 |
+| `codegraph agents list`         | List Tier 1 agents and whether they are detected/configured, per scope                            |
+| `codegraph agents remove <id>`  | Undo setup: restores the pre-install config bytes; removes the instruction block                  |
+| `codegraph agents doctor`       | Diagnose setup problems per agent, each finding with a fix (alias: `codegraph doctor`)            |
+| `codegraph mcp-config`          | Print a config snippet for any MCP client                                                         |
+| `codegraph update`              | Update the binary                                                                                 |
 
 ## Privacy
 
