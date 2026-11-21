@@ -53,7 +53,7 @@ flowchart LR
   S -. "sets up" .-> AG
 ```
 
-If your viewer does not render Mermaid, see [docs/architecture.svg](docs/architecture.svg).
+If your viewer does not render Mermaid, see [architecture.svg](architecture.svg).
 
 1. The indexer parses your code (tree-sitter), resolves names, derives facts such as side effects and entry points, and adds git and test information.
 2. Everything is stored in a local SQLite file in `.codegraph/`. Each fact is tied to the hash of the code it describes, so when the code changes, stale facts expire instead of misleading the agent.
@@ -61,144 +61,30 @@ If your viewer does not render Mermaid, see [docs/architecture.svg](docs/archite
 4. Agents query it through a standard MCP server (or the CLI) and get ranked, size-capped answers.
 5. Nothing leaves your machine.
 
-## Install
+## Get started
 
-Download the archive for your machine from [GitHub Releases](https://github.com/BuildTeamRYS/codegraph/releases), extract it, and put the binary somewhere on your `PATH`. Then run `codegraph init` from your project folder. There is no bootstrap script, package manager, or admin right requirement.
+- Installing the binaries or connecting an agent? See [SETUP.md](SETUP.md).
+- Building from source or preparing a dev machine from scratch? See [CONFIG.md](CONFIG.md).
 
-| Machine | Archive |
-|---|---|
-| Linux x86_64 (Debian/Ubuntu/Fedora/RHEL/…) | `codegraph-linux-x64.tar.gz` |
-| Linux ARM64 (e.g. Pi 4/5) | `codegraph-linux-arm64.tar.gz` |
-| macOS Intel | `codegraph-macos-x64.tar.gz` |
-| macOS Apple Silicon | `codegraph-macos-arm64.tar.gz` |
-| Windows x86_64 | `codegraph-windows-x64.zip` |
-| Windows on ARM | use `codegraph-windows-x64.zip` — Windows runs x64 binaries under emulation |
+## Agent compatibility
 
-The Linux binaries are static musl, so they run unchanged on every distro, including RPM-based ones. No Node, Python, Rust, or extra system libraries are needed.
+The codegraph MCP server works with any MCP-capable client — that is the only integration surface. Installation and per-agent setup commands are documented in [SETUP.md](SETUP.md); compatibility details are tracked in [COMPAT.md](COMPAT.md).
 
-### Linux and macOS
-
-```sh
-tar -xzf codegraph-linux-x64.tar.gz        # use the archive for your machine
-chmod +x codegraph
-mkdir -p "$HOME/.codegraph/bin"
-mv codegraph "$HOME/.codegraph/bin/codegraph"
-```
-
-Add that directory to your `PATH` in your shell startup file (`.zshrc` or `.bashrc`):
-
-```sh
-echo 'export PATH="$HOME/.codegraph/bin:$PATH"' >> "$HOME/.zshrc"
-```
-
-Open a new shell before continuing.
-
-If you downloaded through a browser on macOS, Gatekeeper may block the unsigned binary. Right-click → **Open** once, or remove the quarantine attribute:
-
-```sh
-xattr -d com.apple.quarantine "$HOME/.codegraph/bin/codegraph"
-```
-
-### Windows
-
-```powershell
-Expand-Archive codegraph-windows-x64.zip -DestinationPath .
-$dir = Join-Path $env:LOCALAPPDATA 'codegraph\bin'
-New-Item -ItemType Directory -Force -Path $dir | Out-Null
-Copy-Item .\codegraph.exe "$dir\codegraph.exe"
-```
-
-Add that directory to your user `PATH`:
-
-```powershell
-$userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
-if ($userPath -notlike "*$dir*") {
-    [Environment]::SetEnvironmentVariable('Path', "$userPath;$dir", 'User')
-}
-```
-
-Open a new terminal before continuing. If SmartScreen says "Windows protected your PC", choose **More info → Run anyway**. This is expected until signed binaries ship.
-
-### Offline bundle
-
-Copy the release archive for the target machine into an offline folder. Recipients extract it and follow the manual steps above. No network access is needed after the archive has been downloaded.
-
-### Build from source (needs Rust)
-
-```sh
-cargo build --release
-# then point your agent at target/release/codegraph, or run `codegraph init` from the build directory
-```
-
-### Verify the install
-
-After install:
-
-```sh
-codegraph --version
-codegraph doctor        # checks the agent configs you created with `codegraph init`
-```
-
-To uninstall manually, delete the copied binary and remove its directory from your `PATH`. To undo the agent configuration, run `codegraph agents remove <id>` for each agent you set up.
-
-## Connect your coding agent
-
-From your project folder:
-
-```sh
-codegraph init
-```
-
-This indexes the repo, detects the coding agents installed on your machine, shows exactly what it will change in each agent's MCP config, and asks before applying. To target one agent, run `codegraph init --agent <name>`. To undo, run `codegraph agents remove <name>`.
-
-Most agents need a **restart or reload** afterwards, and some ask you to **approve** the new server. `codegraph init` prints the exact steps for each agent it configures.
-
-### Check that it works
-
-```sh
-codegraph doctor
-```
-
-`doctor` connects to codegraph's own server as an MCP client and reports, per agent, what is wrong: config missing, wrong path, server crashing, tools hidden, or index stale. Then ask your agent:
-
-> Use codegraph to find where login is handled and what calls it.
-
-You should see it call a `codegraph` tool instead of opening many files.
-
-### Supported agents
-
-The `codegraph` MCP server works with any MCP-capable client — that is the only integration surface. `codegraph init` detects the agents below from PATH and config markers, shows the exact change to each config, and asks before writing. Config formats were re-verified against each agent's official docs on 2026-11-19; statuses reflect real-install verification (see [COMPAT.md](COMPAT.md)). Per-agent setup guides under `docs/agents/` are generated from the same adapter table in phase 2.6 and are not available yet — until then, `codegraph init` prints each agent's exact steps on setup, and manual setup is documented in [COMPAT.md](COMPAT.md).
-
-| Agent                                          | Setup                                                         | Status                                                                        |
-| ---------------------------------------------- | ------------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| Claude Code (CLI, desktop app, IDE extensions) | `codegraph init --agent claude-code`                          | verified 2026-11-19 (pending interactive approval on first project-scope run) |
-| Cursor                                         | `codegraph init --agent cursor`                               | unverified                                                                    |
-| VS Code with GitHub Copilot                    | `codegraph init --agent vscode-copilot`                       | unverified                                                                    |
-| Codex CLI                                      | `codegraph init --agent codex-cli`                            | unverified                                                                    |
-| Gemini CLI                                     | `codegraph init --agent gemini-cli`                           | unverified                                                                    |
-| Google Antigravity (IDE and CLI)               | `codegraph init --agent antigravity` (user scope recommended) | unverified                                                                    |
-| OpenCode                                       | `codegraph init --agent opencode`                             | verified 2026-11-19 (`opencode mcp list` → connected)                         |
-| Windsurf / Devin Desktop                       | `codegraph init --agent windsurf`                             | unverified                                                                    |
-| Claude Desktop                                 | `codegraph init --agent claude-desktop` (user scope only)     | unverified                                                                    |
-
-### Any other MCP client
-
-`codegraph mcp-config --format json` (or `toml`, `yaml`) prints a snippet for your client with the right command path. The shape differs between agents (for example, OpenCode takes `command` as an array and Codex uses TOML), so prefer that output over copying an example. A typical JSON entry looks like this:
-
-```json
-{
-  "mcpServers": {
-    "codegraph": {
-      "command": "/absolute/path/to/codegraph",
-      "args": ["serve"]
-    }
-  }
-}
-```
-
-If your agent has a shell tool but no MCP support, it can call the same tools from the command line: `codegraph query <tool> <args>`.
+| Agent                                          | Status                                                                        |
+| ---------------------------------------------- | ----------------------------------------------------------------------------- |
+| Claude Code (CLI, desktop app, IDE extensions) | verified 2026-11-19 (pending interactive approval on first project-scope run) |
+| Cursor                                         | unverified                                                                    |
+| VS Code with GitHub Copilot                    | unverified                                                                    |
+| Codex CLI                                      | unverified                                                                    |
+| Gemini CLI                                     | unverified                                                                    |
+| Google Antigravity (IDE and CLI)               | unverified                                                                    |
+| OpenCode                                       | verified 2026-11-19 (`opencode mcp list` → connected)                         |
+| Windsurf / Devin Desktop                       | unverified                                                                    |
+| Claude Desktop                                 | unverified                                                                    |
 
 ## Commands
+
+This table is a reference for what the binary can do. Setup and configuration steps live in [SETUP.md](SETUP.md).
 
 | Command                         | What it does                                                                                      |
 | ------------------------------- | ------------------------------------------------------------------------------------------------- |
@@ -221,6 +107,8 @@ codegraph runs on your machine. It makes no network calls except updating the bi
 
 ## Project documents
 
+- [SETUP.md](SETUP.md): install and configure the binaries on target devices
+- [CONFIG.md](CONFIG.md): dev machine prerequisites and release build instructions
 - [PLAN.md](PLAN.md): build plan and acceptance checks
 - [STATUS.md](STATUS.md): current state
 - [DECISIONS.md](DECISIONS.md): why things are the way they are

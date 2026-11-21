@@ -39,3 +39,12 @@ serde.workspace = true
 ureq = { version = "3.5.2", default-features = false, features = ["rustls"] }
 sha2 = "0.11.1"
 cfg-if = "1.0.5"
+
+[package.metadata.generate-rpm]
+name = "codegraph"
+release = "1"
+summary = "codegraph indexer and MCP server"
+url = "https://github.com/BuildTeamRYS/codegraph"
+assets = [
+  { source = "target/release/codegraph", dest = "/usr/bin/codegraph", mode = "755" },
+]
