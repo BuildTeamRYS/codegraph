@@ -1,10 +1,84 @@
 use std::path::PathBuf;
 
-use anyhow::Result;
 use clap::{Parser, Subcommand, ValueEnum};
 use codegraph_agents::Scope;
 use codegraph_cli::{default_db_path, git_head_commit, index_repo, resolve_repo};
 use codegraph_store::Store;
+use std::io::{self};
+
+/// This function creates a friendly, step-by-step menu for non-technical users.
+fn run_interactive_menu() -> anyhow::Result<()> {
+    use inquire::{Select, Text};
+
+    loop {
+        let options = vec![
+            "📁 Initialize a new project (Index & Setup)",
+            "📊 Check project status",
+            "🩺 Run health check (Doctor)",
+            "❓ Query the code graph",
+            "🔄 Update CodeGraph",
+            "❌ Exit",
+        ];
+
+        let ans = match Select::new("Welcome to CodeGraph! What would you like to do?", options)
+            .prompt()
+        {
+            Ok(val) => val,
+            Err(_) => {
+                println!("Goodbye!");
+                break;
+            }
+        };
+
+        match ans {
+            "📁 Initialize a new project (Index & Setup)" => run_command(&["init"]),
+            "📊 Check project status" => run_command(&["status"]),
+            "🩺 Run health check (Doctor)" => run_command(&["doctor"]),
+            "❓ Query the code graph" => {
+                let tool = Text::new("Enter the action (e.g., find_symbol, callers):")
+                    .prompt()
+                    .unwrap_or_default();
+                let args = Text::new("Enter details (e.g., function name):")
+                    .prompt()
+                    .unwrap_or_default();
+
+                let mut final_args = vec!["query", &tool];
+                if !args.is_empty() {
+                    let args_vec: Vec<&str> = args.split_whitespace().collect();
+                    final_args.extend(args_vec);
+                }
+                run_command(&final_args);
+            }
+            "🔄 Update CodeGraph" => run_command(&["update"]),
+            "❌ Exit" => {
+                println!("Goodbye!");
+                break;
+            }
+            _ => {}
+        }
+    }
+    Ok(())
+}
+
+/// This helper runs the actual tool commands in the background,
+/// so we don't have to rewrite any existing logic.
+fn run_command(args: &[&str]) {
+    println!("\n--- Running: codegraph {} ---", args.join(" "));
+
+    // Use the full path here to avoid naming collisions with clap's Command enum
+    let mut cmd = std::process::Command::new(std::env::current_exe().unwrap());
+    cmd.args(args);
+
+    let status = cmd.status().expect("Failed to execute command");
+
+    if !status.success() {
+        eprintln!("Command completed with issues. Please check the output above.");
+    }
+
+    println!("\n--- Press Enter to return to the main menu ---");
+    let mut input = String::new();
+    let _ = io::stdin().read_line(&mut input);
+}
 
 #[derive(Clone, Copy, ValueEnum)]
 enum ScopeArg {
@@ -191,7 +265,7 @@ enum AgentsCommand {
     },
 }
 
-fn main() -> Result<()> {
+fn main() -> anyhow::Result<()> {
     // Well-mannered Unix CLI: if our downstream closes the pipe early
     // (e.g. `codegraph status | head -1`), exit quietly instead of panicking
     // on the println! EPIPE.
@@ -208,6 +282,26 @@ fn main() -> Result<()> {
         eprintln!("panic: {msg}");
         std::process::exit(101);
     }));
+
+    let args: Vec<String> = std::env::args().collect();
+
+    // `codegraph .` or `codegraph /some/path` → open the menu in that folder.
+    // Matches normal Linux conventions: the tool follows the folder you point it at.
+    if args.len() == 2 {
+        let candidate = std::path::Path::new(&args[1]);
+        if candidate.is_dir() {
+            if let Err(e) = std::env::set_current_dir(candidate) {
+                eprintln!("codegraph: cannot enter {}: {}", candidate.display(), e);
+                std::process::exit(1);
+            }
+            return run_interactive_menu();
+        }
+    }
+
+    // If the user just typed "codegraph" with no extra words, show the friendly menu.
+    if std::env::args().len() == 1 {
+        return run_interactive_menu();
+    }
 
     let cli = Cli::parse();
     match cli.command {
