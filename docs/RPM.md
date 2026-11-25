@@ -58,7 +58,7 @@ Before distributing the package, it is best practice to test it to ensure it ins
 1. Install the package (requires administrator privileges):
 
 ```bash
-sudo rpm -i rpm-build/RPMS/x86_64/codegraph-0.2.0-1.x86_64.rpm
+sudo rpm -U ./codegraph-0.2.0-1.x86_64.rpm
 ```
 
 2. Verify the installation by checking the version from any directory:

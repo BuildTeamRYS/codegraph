@@ -88,6 +88,93 @@ pub struct EntryPoint {
     pub line: u32,
 }
 
+/// Vendor directory heuristic shared by plugins. Paths use forward slashes.
+pub fn is_vendor_path(rel_path: &str) -> bool {
+    const VENDOR_DIRS: &[&str] = &[
+        "node_modules",
+        "vendor",
+        "third_party",
+        "dist",
+        "build",
+        "out",
+    ];
+    rel_path.split('/').any(|c| VENDOR_DIRS.contains(&c))
+}
+
+/// Returns true if this path should be completely skipped during indexing.
+/// This prevents massive bloat and parser errors from auto-generated,
+/// third-party code, or secrets that the agent doesn't need to reason about.
+pub fn should_skip_indexing(rel_path: &str) -> bool {
+    // 1. Explicit vendor, build, and cache directories
+    const SKIP_DIRS: &[&str] = &[
+        "node_modules",
+        "vendor",
+        "third_party",
+        "dist",
+        "build",
+        "out",
+        ".cache",
+        ".next",
+        ".nuxt",
+        ".svelte-kit",
+        "coverage",
+        ".git",
+        ".svn",
+        ".idea",
+        ".vscode-test",
+    ];
+
+    if rel_path.split('/').any(|c| SKIP_DIRS.contains(&c)) {
+        return true;
+    }
+
+    // 2. Secret files and lockfiles (no need to index these for a code graph)
+    let name = std::path::Path::new(rel_path)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+
+    if name == ".env"
+        || name.starts_with(".env.")
+        || name.starts_with(".env_")
+        || name.ends_with(".pem")
+        || name.ends_with(".key")
+        || name.ends_with(".crt")
+        || name == "yarn.lock"
+        || name == "package-lock.json"
+        || name == "pnpm-lock.yaml"
+        || name == "bun.lockb"
+        || name == "bun.lock"
+    {
+        return true;
+    }
+
+    // 3. Auto-generated files
+    if name.ends_with(".d.ts")
+        || name.contains(".generated.")
+        || name.contains(".g.ts")
+        || name.contains(".min.js")
+        || name.contains(".min.ts")
+    {
+        return true;
+    }
+
+    // 4. Hidden files/directories (except well-known config dirs that agents might need)
+    let first_component = rel_path.split('/').next().unwrap_or("");
+    if first_component.starts_with('.')
+        && first_component != ".github"
+        && first_component != ".vscode"
+        && first_component != ".cursor"
+        && first_component != ".claude"
+        && first_component != ".codegraph"
+    {
+        return true;
+    }
+
+    false
+}
+
 /// One language (or one JS family dialect) behind a single trait.
 ///
 /// Implementations must be cheap, deterministic and offline. The core never
@@ -115,19 +202,6 @@ pub trait LanguagePlugin {
     }
 }
 
-/// Vendor directory heuristic shared by plugins. Paths use forward slashes.
-pub fn is_vendor_path(rel_path: &str) -> bool {
-    const VENDOR_DIRS: &[&str] = &[
-        "node_modules",
-        "vendor",
-        "third_party",
-        "dist",
-        "build",
-        "out",
-    ];
-    rel_path.split('/').any(|c| VENDOR_DIRS.contains(&c))
-}
-
 /// Walk `root`, skipping unchanged files (same content hash in `existing`),
 /// parsing everything else with the first matching plugin (by path order in
 /// `plugins`). Returns outcomes plus the set of seen repo-relative paths.
@@ -149,14 +223,17 @@ pub fn scan(
         .follow_links(false)
         .sort_by_file_path(|a, b| a.cmp(b));
 
+    // Explicitly respect .dockerignore if it exists in the repo root
+    let dockerignore = root.join(".dockerignore");
+    if dockerignore.exists() {
+        builder.add_ignore(dockerignore);
+    }
+
     for entry in builder.build() {
         let entry = match entry {
             Ok(e) => e,
-            Err(e) => {
-                output.outcomes.push(FileOutcome::Failed {
-                    path: root.display().to_string(),
-                    error: format!("walk error: {e}"),
-                });
+            Err(_) => {
+                // Silently ignore walk errors (e.g., permission denied on a system folder)
                 continue;
             }
         };
@@ -165,6 +242,13 @@ pub fn scan(
             continue;
         }
         let rel = repo_relative(&root, path);
+
+        // HARD SKIP: Prevent indexing of vendor, cache, secrets, and generated files.
+        // This acts as a safety net even if .gitignore is missing or misconfigured.
+        if should_skip_indexing(&rel) {
+            continue;
+        }
+
         let plugin = plugins
             .iter()
             .find_map(|p| p.language_for(&rel).map(|_| *p));
